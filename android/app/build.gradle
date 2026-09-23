@@ -1,0 +1,124 @@
+apply plugin: 'com.android.application'
+
+def appVersion = new groovy.json.JsonSlurper().parse(file("../../package.json")).version.toString()
+def versionParts = appVersion.tokenize('.')
+def releaseStore = rootProject.file("lean-circuit-release.jks")
+def releaseAlias = System.getenv("RELEASE_KEY_ALIAS")
+def releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")
+def releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+
+def codedArray = { String value ->
+    if (value == null || value.length() == 0) {
+        return "new int[0]"
+    }
+    StringBuilder encoded = new StringBuilder("new int[] {")
+    char[] chars = value.toCharArray()
+    for (int i = 0; i < chars.length; i++) {
+        if (i > 0) encoded.append(",")
+        encoded.append((((int) chars[i]) ^ 90))
+    }
+    encoded.append("}")
+    return encoded.toString()
+}
+
+def generatedUpdateDir = layout.buildDirectory.dir("generated/source/update")
+tasks.register("generateUpdateMaterial") {
+    outputs.upToDateWhen { false }
+    doLast {
+        def secretFile = rootProject.file("update.secret")
+        def repoFile = rootProject.file("update.repo")
+        def token = secretFile.exists() ? secretFile.getText("UTF-8").trim() : ""
+        def repo = repoFile.exists() ? repoFile.getText("UTF-8").trim() : ""
+        def dir = new File(generatedUpdateDir.get().asFile, "com/leancircuit/app")
+        dir.mkdirs()
+        def source = new StringBuilder()
+        source.append("package com.leancircuit.app;\n")
+        source.append("final class UpdateMaterial {\n")
+        source.append("  private UpdateMaterial() {}\n")
+        source.append("  private static char[] decode(int[] coded) {\n")
+        source.append("    char[] out = new char[coded.length];\n")
+        source.append("    for (int i = 0; i < coded.length; i++) out[i] = (char) (coded[i] ^ 90);\n")
+        source.append("    return out;\n")
+        source.append("  }\n")
+        source.append("  static char[] token() { return decode(").append(codedArray(token)).append("); }\n")
+        source.append("  static char[] repo() { return decode(").append(codedArray(repo)).append("); }\n")
+        source.append("}\n")
+        new File(dir, "UpdateMaterial.java").setText(source.toString(), "UTF-8")
+    }
+}
+
+android {
+    namespace = "com.leancircuit.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.leancircuit.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode versionParts[0].toInteger() * 1000000 + versionParts[1].toInteger() * 1000 + versionParts[2].toInteger()
+        versionName appVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (releaseStore.exists() && releaseAlias && releaseStorePassword && releaseKeyPassword) {
+                storeFile releaseStore
+                storePassword releaseStorePassword
+                keyPassword releaseKeyPassword
+                keyAlias releaseAlias
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (releaseStore.exists() && releaseAlias && releaseStorePassword && releaseKeyPassword) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+    sourceSets {
+        main {
+            java {
+                srcDir layout.buildDirectory.dir("generated/source/update")
+            }
+        }
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn("generateUpdateMaterial") }
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
