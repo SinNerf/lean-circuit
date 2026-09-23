@@ -76,6 +76,13 @@ jobs:
           fi
           printf '%s' "$UPDATE_READ_TOKEN" > android/update.secret
           printf '%s' "$GITHUB_REPOSITORY" > android/update.repo
+      - name: Write the Google services file
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          fi
       - name: Build the release APK
         working-directory: android
         env:

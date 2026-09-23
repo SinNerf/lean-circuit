@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { TRIALS, CLASS_TRIALS } from './catalog.js';
 import { exercisesFor, workoutPath } from './paths.js';
-import { addFriend, cloudEnabled, loadBoard, loadFriend, pullBody, pullProfile, pushCloud, signIn, signOutAccount, signUp, watchAccount } from './cloud.js';
+import { addFriend, cloudEnabled, loadBoard, loadFriend, pullBody, pullProfile, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount } from './cloud.js';
 import { isProfilePhoto } from './photo.js';
 import { beep, buzz } from './audio.js';
 import {
@@ -702,6 +702,14 @@ export function GameProvider({ children }) {
         setAuthError(authMessage(error));
       }
     },
+    async enterWithGoogle() {
+      setAuthError('');
+      try {
+        await signInWithGoogleAccount();
+      } catch (error) {
+        setAuthError(authMessage(error));
+      }
+    },
     async leaveAccount() {
       setAuthError('');
       await signOutAccount();
@@ -732,7 +740,11 @@ function authMessage(error) {
   if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'Email or password did not match.';
   if (code === 'auth/invalid-email') return 'Enter an email address.';
   if (code === 'auth/weak-password') return 'Use at least 6 characters.';
+  if (code === 'auth/account-exists-with-different-credential') return 'That email already has an account.';
+  if (code === 'auth/unauthorized-domain') return 'This browser is not an authorized domain.';
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || /cancel/i.test(code) || /cancel/i.test(error?.message || '')) return 'Google sign-in was canceled.';
   if (error?.message === 'offline') return 'Sign-in is not available in this build.';
+  if (error?.message === 'google') return 'Google sign-in did not finish.';
   return 'Sign-in did not finish.';
 }
 

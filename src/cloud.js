@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import firebaseConfig from 'virtual:firebase-config';
 import { titleName } from './honors.js';
 import { currentStreak, longestStreak } from './honors.js';
@@ -63,7 +64,29 @@ export async function signIn(email, password) {
   await signInWithEmailAndPassword(auth, email.trim(), password);
 }
 
+export async function signInWithGoogleAccount() {
+  const on = await cloudEnabled();
+  if (!on || !auth) throw new Error('offline');
+  const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import('firebase/auth');
+  if (Capacitor.isNativePlatform()) {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true, useCredentialManager: true });
+    const idToken = result.credential?.idToken;
+    if (!idToken) throw new Error('google');
+    await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+    return;
+  }
+  await signInWithPopup(auth, new GoogleAuthProvider());
+}
+
 export async function signOutAccount() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+      await FirebaseAuthentication.signOut();
+    } catch {
+    }
+  }
   if (!auth) return;
   const { signOut } = await import('firebase/auth');
   await signOut(auth);

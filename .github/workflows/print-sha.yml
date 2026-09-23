@@ -1,0 +1,32 @@
+name: Print signing SHA-1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Print the SHA-1
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ] || [ -z "$RELEASE_STORE_PASSWORD" ] || [ -z "$RELEASE_KEY_ALIAS" ]; then
+            echo "Set RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, and RELEASE_KEY_ALIAS."
+            exit 1
+          fi
+          tmp=$(mktemp)
+          trap 'rm -f "$tmp"' EXIT
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$tmp"
+          line=$(keytool -list -v -keystore "$tmp" -alias "$RELEASE_KEY_ALIAS" -storepass "$RELEASE_STORE_PASSWORD" 2>/dev/null | grep -m 1 'SHA1:' || true)
+          if [ -z "$line" ]; then
+            echo "No SHA1 line was found."
+            exit 1
+          fi
+          printf '%s\n' "$line"
