@@ -23,6 +23,7 @@
 -keep class com.getcapacitor.** { *; }
 -keep class com.capacitorjs.** { *; }
 -keep class io.capawesome.capacitorjs.plugins.firebase.authentication.** { *; }
+-dontwarn com.facebook.**
 -keep class com.leancircuit.app.MainActivity { *; }
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
