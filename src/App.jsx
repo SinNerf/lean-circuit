@@ -31,7 +31,7 @@ function Shell() {
   return (
     <div className="h-dvh overflow-hidden bg-base text-primary">
       <Header />
-      <main className="absolute inset-x-0 bottom-[64px] top-[56px] overflow-y-auto">{body}</main>
+      <main className="absolute inset-x-0 bottom-[calc(64px+var(--inset-bottom))] top-[calc(56px+var(--inset-top))] overflow-y-auto">{body}</main>
       {game.formId ? <FormSheet /> : null}
       <Nav />
     </div>

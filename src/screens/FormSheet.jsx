@@ -30,7 +30,7 @@ export function FormSheet() {
   );
 
   return (
-    <div className="fixed inset-x-0 top-0 bottom-[64px] z-40 flex flex-col bg-base" data-testid="form-sheet">
+    <div className="fixed inset-x-0 top-0 bottom-[calc(64px+var(--inset-bottom))] z-40 flex flex-col bg-base pt-[var(--inset-top)]" data-testid="form-sheet">
       <header className="flex min-h-[56px] shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-2">
         <h2 data-testid="guide-title" className="font-display text-[22px] font-semibold leading-normal text-primary">
           {guide.title}

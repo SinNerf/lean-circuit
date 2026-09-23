@@ -7,7 +7,7 @@ export function FirstLaunch() {
   const ready = value.trim().length > 0 && !game.savingName;
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-base px-4 text-primary">
+    <main className="grid min-h-dvh place-items-center bg-base px-4 pb-[var(--inset-bottom)] pt-[var(--inset-top)] text-primary">
       <form
         className="w-full max-w-sm"
         onSubmit={(event) => {

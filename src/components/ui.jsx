@@ -46,9 +46,11 @@ export function Header() {
     title = TABS.find(([id]) => id === game.tab)?.[1] || 'Circuit';
   }
   return (
-    <header className="fixed inset-x-0 top-0 z-30 flex h-[56px] items-center justify-between border-b border-line bg-base px-4">
-      <h1 className="font-display text-[22px] font-semibold leading-none text-primary">{title}</h1>
-      {icon}
+    <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-base pt-[var(--inset-top)]">
+      <div className="flex h-[56px] items-center justify-between px-4">
+        <h1 className="font-display text-[22px] font-semibold leading-none text-primary">{title}</h1>
+        {icon}
+      </div>
     </header>
   );
 }
@@ -56,7 +58,7 @@ export function Header() {
 export function Nav() {
   const game = useGame();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 h-[64px] border-t border-line bg-base">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-base pb-[var(--inset-bottom)]">
       <div className="grid h-[64px] grid-cols-4">
         {TABS.map(([id, label]) => {
           const on = game.tab === id && !game.settingsOpen;

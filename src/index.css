@@ -26,6 +26,11 @@
   font-display: swap;
 }
 
+:root {
+  --inset-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --inset-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+}
+
 html {
   color-scheme: dark;
   background: #101418;
