@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { TRIALS, CLASS_TRIALS } from './catalog.js';
 import { exercisesFor, workoutPath } from './paths.js';
-import { addFriend, cloudEnabled, loadBoard, loadFriend, pullBody, pushCloud, signIn, signOutAccount, signUp, watchAccount } from './cloud.js';
+import { addFriend, cloudEnabled, loadBoard, loadFriend, pullBody, pullProfile, pushCloud, signIn, signOutAccount, signUp, watchAccount } from './cloud.js';
+import { isProfilePhoto } from './photo.js';
 import { beep, buzz } from './audio.js';
 import {
   afterAction,
@@ -48,7 +49,7 @@ import {
   visualTier,
   weekState,
 } from './logic.js';
-import { get, set } from './storage.js';
+import { get, remove, set } from './storage.js';
 
 const GameContext = createContext(null);
 
@@ -103,11 +104,14 @@ function loadState() {
     photoData: get(KEYS.photo, null),
     photoURL: get(KEYS.photoURL, '') || '',
     history: readHistory(get(KEYS.history, [])),
+    featuredBadge: get(KEYS.featured, '') || '',
+    accountUid: get(KEYS.account, null) || null,
   };
 }
 
 function persist(state) {
   if (state.name) set(KEYS.name, state.name);
+  else remove(KEYS.name);
   if (state.device) set(KEYS.device, state.device);
   set(KEYS.checks, state.checks);
   set(KEYS.stats, state.stats);
@@ -133,8 +137,12 @@ function persist(state) {
   set(KEYS.path, state.path || 'superhuman');
   set(KEYS.body, state.body);
   if (state.photoData) set(KEYS.photo, state.photoData);
+  else remove(KEYS.photo);
   set(KEYS.photoURL, state.photoURL || '');
   set(KEYS.history, state.history || []);
+  set(KEYS.featured, state.featuredBadge || '');
+  if (state.accountUid) set(KEYS.account, state.accountUid);
+  else remove(KEYS.account);
 }
 
 export function GameProvider({ children }) {
@@ -162,6 +170,8 @@ export function GameProvider({ children }) {
   const [friend, setFriend] = useState(null);
   const [board, setBoard] = useState({ rows: [], activity: null });
   const [account, setAccount] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [resolvedUid, setResolvedUid] = useState(null);
   const [cloudOn, setCloudOn] = useState(false);
   const [authError, setAuthError] = useState('');
   const boot = useRef(false);
@@ -178,17 +188,42 @@ export function GameProvider({ children }) {
   useEffect(() => {
     let stop = () => {};
     cloudEnabled().then((on) => setCloudOn(on));
-    stop = watchAccount((user) => setAccount(user));
+    stop = watchAccount((user) => {
+      setAccount(user);
+      setAuthReady(true);
+      if (!user) setResolvedUid(null);
+    });
     return () => stop();
   }, []);
 
   useEffect(() => {
     if (!account?.uid) return undefined;
+    let dead = false;
+    const uid = account.uid;
+    pullProfile(uid)
+      .then((card) => {
+        if (dead) return;
+        setState((s) => applyAccountProfile(s, uid, card));
+        setResolvedUid(uid);
+      })
+      .catch(() => {
+        if (dead) return;
+        setState((s) => applyAccountProfile(s, uid, null));
+        setResolvedUid(uid);
+      });
+    return () => {
+      dead = true;
+    };
+  }, [account]);
+
+  useEffect(() => {
+    if (!account?.uid || resolvedUid !== account.uid) return undefined;
+    const uid = account.uid;
     const handle = window.setTimeout(() => {
-      pushCloud(account.uid, stateRef.current, levelInfo(stateRef.current.stats.tier, speedTier(stateRef.current.speed)), today).catch(() => {});
+      pushCloud(uid, stateRef.current, levelInfo(stateRef.current.stats.tier, speedTier(stateRef.current.speed)), today).catch(() => {});
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [account, state, today]);
+  }, [account, resolvedUid, state, today]);
 
   useEffect(() => {
     if (!account?.uid) return undefined;
@@ -313,6 +348,8 @@ export function GameProvider({ children }) {
     friend,
     board,
     account,
+    authReady,
+    profileReady: !account || resolvedUid === account.uid,
     cloudOn,
     authError,
     skillPath,
@@ -633,15 +670,21 @@ export function GameProvider({ children }) {
     setBody(next) {
       setState((s) => afterAction({ ...s, body: { heightCm: next.heightCm ?? null, weightKg: next.weightKg ?? null } }, today));
     },
-    async setLocalPhoto(file) {
-      const data = await resizePhoto(file);
-      const saved = set(KEYS.photo, data);
-      if (!saved) {
-        setAuthError('This photo could not be stored on the device.');
-        return;
-      }
+    setProfilePhoto(dataUrl) {
+      if (!isProfilePhoto(dataUrl)) return 'large';
+      const saved = set(KEYS.photo, dataUrl);
+      if (!saved) return 'device';
       setAuthError('');
-      setState((s) => ({ ...s, photoData: data }));
+      setState((s) => ({ ...s, photoData: dataUrl }));
+      return 'ok';
+    },
+    setFeatured(id) {
+      setState((s) => {
+        const core = Boolean(s.badges?.[id]);
+        const weekly = (s.weeklyBadges || []).some((badge) => badge.id === id);
+        if (!core && !weekly) return s;
+        return { ...s, featuredBadge: id };
+      });
     },
     async createAccount(email, password) {
       setAuthError('');
@@ -689,31 +732,25 @@ function authMessage(error) {
   if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'Email or password did not match.';
   if (code === 'auth/invalid-email') return 'Enter an email address.';
   if (code === 'auth/weak-password') return 'Use at least 6 characters.';
-  if (error?.message === 'offline') return 'Sign-in waits until Firebase is configured. Training still works.';
+  if (error?.message === 'offline') return 'Sign-in is not available in this build.';
   return 'Sign-in did not finish.';
 }
 
-function blobToData(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function resizePhoto(file) {
-  const img = await createImageBitmap(file);
-  const scale = Math.min(1, 200 / Math.max(img.width, img.height));
-  const width = Math.max(1, Math.round(img.width * scale));
-  const height = Math.max(1, Math.round(img.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-  img.close?.();
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.6));
-  return blobToData(blob);
+function applyAccountProfile(s, uid, card) {
+  const remoteName = (card?.name || '').trim();
+  const same = !s.accountUid || s.accountUid === uid;
+  const name = remoteName ? remoteName : s.name && same ? s.name : null;
+  const photo = isProfilePhoto(card?.photo) ? card.photo : same ? s.photoData : null;
+  const featured = (card?.featuredBadge || (same ? s.featuredBadge : '')) || '';
+  const path = card?.path ? workoutPath(card.path).id : s.path;
+  return {
+    ...s,
+    name,
+    accountUid: uid,
+    photoData: photo || null,
+    featuredBadge: featured,
+    path,
+  };
 }
 
 export function useGame() {

@@ -1,8 +1,43 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
+
+function firebaseLocalConfig() {
+  const virtual = 'virtual:firebase-config';
+  const resolved = '\0virtual:firebase-config';
+  return {
+    name: 'firebase-local-config',
+    resolveId(source) {
+      if (source === virtual) return resolved;
+    },
+    load(source) {
+      if (source !== resolved) return null;
+      let config = null;
+      try {
+        const file = path.resolve(process.cwd(), 'firebase.local.json');
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (parsed?.apiKey && parsed?.projectId && parsed?.appId) {
+          config = {
+            apiKey: parsed.apiKey,
+            authDomain: parsed.authDomain || '',
+            projectId: parsed.projectId,
+            storageBucket: parsed.storageBucket || '',
+            messagingSenderId: parsed.messagingSenderId || '',
+            appId: parsed.appId,
+          };
+          if (parsed.measurementId) config.measurementId = parsed.measurementId;
+        }
+      } catch {
+        config = null;
+      }
+      return `export default ${JSON.stringify(config)};`;
+    },
+  };
+}
 
 export default defineConfig({
   resolve: { preserveSymlinks: true },
@@ -26,6 +61,7 @@ export default defineConfig({
     allowedHosts: ['stiffly-driller-saffron.ngrok-free.dev'],
   },
   plugins: [
+    firebaseLocalConfig(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

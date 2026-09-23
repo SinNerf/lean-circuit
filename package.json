@@ -1,7 +1,7 @@
 {
   "name": "lean-circuit",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite build && vite preview --host 127.0.0.1 --port 47329 --strictPort",
@@ -16,6 +16,8 @@
     "@capacitor/splash-screen": "^8.0.2",
     "firebase": "^12.19.0",
     "framer-motion": "^13.4.0",
+    "gifenc": "^1.0.3",
+    "gifuct-js": "^2.1.2",
     "lucide-react": "^1.47.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

@@ -1,9 +1,9 @@
+import firebaseConfig from 'virtual:firebase-config';
 import { titleName } from './honors.js';
 import { currentStreak, longestStreak } from './honors.js';
 import { publicHistory } from './logic.js';
+import { profilePhoto } from './photo.js';
 import { workoutPath } from './paths.js';
-
-const loaders = import.meta.glob('../firebase.local.json');
 
 let auth = null;
 let db = null;
@@ -12,12 +12,9 @@ let boot = null;
 export async function cloudEnabled() {
   if (!boot) {
     boot = (async () => {
-      const key = Object.keys(loaders)[0];
-      if (!key) return false;
+      const config = firebaseConfig;
+      if (!config?.apiKey || !config?.projectId || !config?.appId) return false;
       try {
-        const mod = await loaders[key]();
-        const config = mod.default || mod;
-        if (!config?.apiKey || !config?.projectId || !config?.appId) return false;
         const { initializeApp } = await import('firebase/app');
         const { getAuth } = await import('firebase/auth');
         const { initializeFirestore, persistentLocalCache } = await import('firebase/firestore');
@@ -73,20 +70,24 @@ export async function signOutAccount() {
 }
 
 export function publicCard(state, sheet, today) {
-  const earned = Object.entries(state.badges || {})
-    .filter(([, date]) => date)
-    .map(([id]) => id);
+  const earned = [
+    ...Object.entries(state.badges || {})
+      .filter(([, date]) => date)
+      .map(([id]) => id),
+    ...(state.weeklyBadges || []).map((badge) => badge.id),
+  ];
   return {
     name: state.name || '',
     title: titleName(state.titleRank),
     level: sheet.level,
     ascension: state.ascend?.count || 0,
     path: workoutPath(state.path).id,
-    photo: typeof state.photoData === 'string' && state.photoData.startsWith('data:image/jpeg') ? state.photoData : '',
+    photo: profilePhoto(state.photoData),
     workouts: (state.history || []).filter((row) => (row.rounds || 0) > 0).length,
     streak: currentStreak(state.trainingDays, today),
     longest: longestStreak(state.trainingDays),
     badges: earned,
+    featuredBadge: earned.includes(state.featuredBadge) ? state.featuredBadge : '',
   };
 }
 
@@ -107,6 +108,21 @@ export async function pushCloud(uid, state, sheet, today) {
   for (const row of state.history || []) {
     await setDoc(doc(db, 'users', uid, 'history', row.id), publicHistory(row), { merge: true });
   }
+}
+
+export async function pullProfile(uid) {
+  const on = await cloudEnabled();
+  if (!on || !db || !uid) return null;
+  const { doc, getDoc } = await import('firebase/firestore');
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return null;
+  const data = snap.data() || {};
+  return {
+    name: typeof data.name === 'string' ? data.name : '',
+    path: typeof data.path === 'string' ? data.path : '',
+    photo: typeof data.photo === 'string' ? data.photo : '',
+    featuredBadge: typeof data.featuredBadge === 'string' ? data.featuredBadge : '',
+  };
 }
 
 export async function pullBody(uid) {

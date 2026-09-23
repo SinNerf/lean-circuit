@@ -10,6 +10,8 @@ const TABS = [
   ['profile', 'Profile'],
 ];
 
+export const proceed = 'rounded bg-accent px-4 py-2 font-body text-[14px] font-normal text-[#101418] disabled:opacity-40';
+
 export const PATH_LABEL = {
   bulwark: 'Bulwark',
   tempest: 'Tempest',

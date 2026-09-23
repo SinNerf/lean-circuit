@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { GameProvider, useGame } from './state.jsx';
 import { Header, Nav } from './components/ui.jsx';
-import { FirstLaunch } from './screens/FirstLaunch.jsx';
+import { AccountGate, BootScreen, UsernameGate } from './screens/FirstLaunch.jsx';
 import { Circuit } from './screens/Circuit.jsx';
 import { Stats } from './screens/Stats.jsx';
 import { Trials } from './screens/Trials.jsx';
@@ -22,7 +22,9 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [game]);
 
-  if (!game.state.name) return <FirstLaunch />;
+  if (!game.authReady || !game.profileReady) return <BootScreen />;
+  if (!game.account) return <AccountGate />;
+  if (!game.state.name || game.state.accountUid !== game.account.uid) return <UsernameGate />;
 
   let body = <Circuit />;
   if (game.settingsOpen) body = <Settings />;

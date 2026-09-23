@@ -45,6 +45,13 @@ jobs:
             echo "The tag must be v plus the version in package.json."
             exit 1
           fi
+      - name: Write the Firebase web config
+        env:
+          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+        run: |
+          if [ -n "$FIREBASE_WEB_CONFIG" ]; then
+            printf '%s' "$FIREBASE_WEB_CONFIG" > firebase.local.json
+          fi
       - name: Build the web app
         run: |
           npm ci

@@ -32,6 +32,8 @@ export const KEYS = {
   photo: 'lean-circuit-photo',
   photoURL: 'lean-circuit-photo-url',
   history: 'lean-circuit-history',
+  featured: 'lean-circuit-featured',
+  account: 'lean-circuit-account',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -108,6 +110,8 @@ export function freshState() {
     photoData: null,
     photoURL: '',
     history: [],
+    featuredBadge: '',
+    accountUid: null,
   };
 }
 
