@@ -78,6 +78,11 @@ export function Skills() {
               {pathNodes(path).map((node) => (
                 <div key={node.id} data-testid={`node-${path.id}-T${node.tier}`}>
                   <SkillRow node={{ ...node, name: `T${node.tier}` }} accent={node.id === accentId} />
+                  {node.id === 'thunderclap' && game.state.body?.heightCm ? (
+                    <p data-testid="height-mark" className="font-body text-[12px] font-normal text-muted">
+                      {Math.round(game.state.body.heightCm)} cm
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

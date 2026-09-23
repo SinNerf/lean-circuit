@@ -1,4 +1,4 @@
-import { Settings, X } from 'lucide-react';
+import { Pencil, Settings, X } from 'lucide-react';
 import { useGame } from '../state.jsx';
 import { PATHS } from '../catalog.js';
 
@@ -7,6 +7,7 @@ const TABS = [
   ['stats', 'Stats'],
   ['trials', 'Trials'],
   ['skills', 'Skills'],
+  ['profile', 'Profile'],
 ];
 
 export const PATH_LABEL = {
@@ -35,6 +36,20 @@ export function Header() {
         <X size={24} />
       </button>
     );
+  } else if (game.tab === 'profile' && game.profileView !== 'self') {
+    title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'board' ? 'Leaderboard' : game.friend?.name || 'Profile';
+    icon = (
+      <button type="button" aria-label="Close" data-testid="close-profile" onClick={game.closeProfilePane} className="grid h-10 w-10 place-items-center text-primary">
+        <X size={24} />
+      </button>
+    );
+  } else if (game.tab === 'profile') {
+    title = 'Profile';
+    icon = (
+      <button type="button" aria-label="Edit" data-testid="edit-profile" onClick={game.openEdit} className="grid h-10 w-10 place-items-center text-primary">
+        <Pencil size={24} />
+      </button>
+    );
   } else if (game.tab === 'circuit') {
     title = 'Circuit';
     icon = (
@@ -59,7 +74,7 @@ export function Nav() {
   const game = useGame();
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-base pb-[var(--inset-bottom)]">
-      <div className="grid h-[64px] grid-cols-4">
+      <div className="grid h-[64px] grid-cols-5">
         {TABS.map(([id, label]) => {
           const on = game.tab === id && !game.settingsOpen;
           return (
@@ -71,7 +86,7 @@ export function Nav() {
                 game.closeSettings();
                 game.setTab(id);
               }}
-              className={`font-body text-[14px] font-normal ${on ? 'text-primary' : 'text-muted'}`}
+              className={`font-body text-[12px] font-normal leading-none ${on ? 'text-primary' : 'text-muted'}`}
             >
               {label}
             </button>

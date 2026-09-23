@@ -12,6 +12,7 @@ export const EXERCISES = [
     name: 'Burpees',
     credit: 15,
     unit: 'reps',
+    load: true,
     stats: ['strength', 'cardio'],
     variant: {
       stat: 'cardio',
@@ -28,6 +29,7 @@ export const EXERCISES = [
     credit: 15,
     unit: 'reps',
     rangeLabel: '15–18',
+    load: true,
     stats: ['strength'],
     variant: {
       stat: 'strength',
@@ -67,6 +69,7 @@ export const EXERCISES = [
     credit: 16,
     unit: 'reps',
     detail: '8 each direction',
+    load: true,
     stats: ['endurance'],
     variant: {
       stat: 'endurance',
@@ -83,6 +86,7 @@ export const EXERCISES = [
     credit: 20,
     unit: 'reps',
     detail: '10 each leg',
+    load: true,
     stats: ['core'],
   },
   {
@@ -90,6 +94,7 @@ export const EXERCISES = [
     name: 'Bear crawl',
     credit: 30,
     unit: 'sec',
+    load: true,
     stats: ['endurance'],
   },
   {

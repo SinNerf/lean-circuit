@@ -1,5 +1,5 @@
 import { Info } from 'lucide-react';
-import { EXERCISES, MUSCLES } from '../catalog.js';
+import { workoutPath } from '../paths.js';
 import { openRound } from '../honors.js';
 import { cellKey, countChecks, doseLine, prescription, roundCount, targetNote } from '../logic.js';
 import { useGame } from '../state.jsx';
@@ -21,7 +21,8 @@ function CheckMark() {
 
 function RoundRows({ roundIndex }) {
   const game = useGame();
-  return EXERCISES.map((exercise, index) => {
+  const exercises = workoutPath(game.state.path).exercises;
+  return exercises.map((exercise, index) => {
     const stored = game.state.difficulty?.targets?.[exercise.id];
     const override = game.difficultyOn && typeof stored === 'number' ? stored : undefined;
     const rx = prescription(exercise, game.state.progression, game.week.scale, override);
@@ -89,6 +90,7 @@ function RoundRows({ roundIndex }) {
 
 export function Circuit() {
   const game = useGame();
+  const path = workoutPath(game.state.path);
   const done = countChecks(game.checks);
   const paused = Boolean(game.checks.paused);
   const card = game.weeklyCard;
@@ -101,6 +103,9 @@ export function Circuit() {
     <div className="pb-8">
       <section className="px-4 pt-4">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">Today</h2>
+        <p data-testid="circuit-path" className="mt-2 font-body text-[12px] font-normal leading-none text-muted">
+          {path.name}
+        </p>
         <p data-testid="round-label" className="mt-2 font-body text-[22px] font-normal leading-none text-primary">
           Round {roundNumber} of 4
         </p>
@@ -219,12 +224,12 @@ export function Circuit() {
       <section className="px-4 pt-8">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">What this works</h2>
         <div className="mt-2 font-body text-[14px] font-normal text-muted">
-          {MUSCLES.map((row) => (
+          {path.muscles.map((row) => (
             <p key={row.name} className="mb-2">
               {row.name}. {row.moves}.
             </p>
           ))}
-          <p data-testid="cardio-line">Burpees, jump squats, and mountain climbers are the cardio.</p>
+          <p data-testid="cardio-line">{path.cardioLine}</p>
         </div>
       </section>
     </div>

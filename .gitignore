@@ -11,6 +11,10 @@ android/local.properties
 local.properties
 android/update.secret
 android/update.repo
+firebase.local.json
+android/app/google-services.json
+*firebase-adminsdk*.json
+serviceAccount.json
 *.keystore
 *.jks
 .git-old/

@@ -1,4 +1,5 @@
 import { EXERCISES } from './catalog.js';
+import { exerciseById, workoutPath } from './paths.js';
 
 export const STAT_IDS = ['strength', 'power', 'endurance', 'core', 'cardio'];
 
@@ -26,6 +27,11 @@ export const KEYS = {
   weekly: 'lean-circuit-weekly',
   ascend: 'lean-circuit-ascend',
   difficulty: 'lean-circuit-difficulty',
+  path: 'lean-circuit-path',
+  body: 'lean-circuit-body',
+  photo: 'lean-circuit-photo',
+  photoURL: 'lean-circuit-photo-url',
+  history: 'lean-circuit-history',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -97,7 +103,16 @@ export function freshState() {
     weekly: null,
     ascend: { count: 0, accent: false },
     difficulty: emptyDifficulty(),
+    path: 'superhuman',
+    body: emptyBody(),
+    photoData: null,
+    photoURL: '',
+    history: [],
   };
+}
+
+export function emptyBody() {
+  return { heightCm: null, weightKg: null };
 }
 
 export function emptyDifficulty() {
@@ -174,6 +189,18 @@ export function prescription(exercise, progression, scale, override) {
     guideId: adopted ? source.guideId : exercise.id,
     adopted,
   };
+}
+
+export function bodyweightFactor(kg) {
+  if (typeof kg !== 'number' || !Number.isFinite(kg) || kg <= 0) return 1;
+  const raw = 0.85 + (kg / 100) * 0.3;
+  return Math.min(1.3, Math.max(0.85, raw));
+}
+
+export function creditFor(base, exercise, pathId, weightKg) {
+  const pathFactor = workoutPath(pathId).multiplier;
+  const body = exercise?.load ? bodyweightFactor(weightKg) : 1;
+  return base * pathFactor * body;
 }
 
 export function doseLine(rx) {
@@ -698,6 +725,120 @@ export function rateCell(state, round, index, kind, today) {
   };
 }
 
+function gainBag() {
+  return { strength: 0, power: 0, endurance: 0, core: 0, cardio: 0 };
+}
+
+export function sessionLog(state, today) {
+  const checks = normalizeChecks(state.checks, today);
+  const cells = Object.values(checks.cells || {});
+  if (!cells.length) return null;
+  const gains = gainBag();
+  for (const cell of cells) {
+    for (const [stat, amount] of Object.entries(cell.parts || {})) {
+      if (gains[stat] != null) gains[stat] += amount;
+    }
+  }
+  const modified = [];
+  const ratings = state.difficulty?.ratings?.[today] || {};
+  for (const set of Object.values(ratings)) {
+    if (set.rating !== 'modify' && !set.easier) continue;
+    const exercise = exerciseById(set.exerciseId);
+    if (exercise && !modified.includes(exercise.name)) modified.push(exercise.name);
+  }
+  let rounds = 0;
+  for (let round = 0; round < 4; round += 1) {
+    if (roundCount(checks, round) === 8) rounds += 1;
+  }
+  const durationMs = (state.roundTimes || []).filter((row) => row.date === today).reduce((sum, row) => sum + (row.ms || 0), 0);
+  return {
+    id: today,
+    date: today,
+    path: state.path || 'superhuman',
+    rounds,
+    durationMs: durationMs || null,
+    gains,
+    modified,
+    pathChange: null,
+  };
+}
+
+export function applySessionLog(state, today) {
+  const log = sessionLog(state, today);
+  const history = [...(state.history || [])];
+  const index = history.findIndex((row) => row.id === today);
+  if (!log) {
+    if (index < 0) return state;
+    const prev = history[index];
+    if (prev.pathChange) {
+      const cleared = { ...prev, rounds: 0, durationMs: null, gains: gainBag(), modified: [] };
+      if (JSON.stringify(cleared) === JSON.stringify(prev)) return state;
+      history[index] = cleared;
+      return { ...state, history };
+    }
+    history.splice(index, 1);
+    return { ...state, history };
+  }
+  const prev = index >= 0 ? history[index] : null;
+  const next = { ...log, pathChange: prev?.pathChange || null };
+  if (prev && JSON.stringify(prev) === JSON.stringify(next)) return state;
+  if (index >= 0) history[index] = next;
+  else history.push(next);
+  return { ...state, history };
+}
+
+export function pathChangeEntry(state, today, nextPath) {
+  const from = workoutPath(state.path).name;
+  const to = workoutPath(nextPath).name;
+  return {
+    id: `${today}:path:${state.path || 'superhuman'}:${nextPath}`,
+    date: today,
+    path: nextPath,
+    rounds: 0,
+    durationMs: null,
+    gains: gainBag(),
+    modified: [],
+    pathChange: `${from} to ${to}`,
+  };
+}
+
+export function readBody(raw) {
+  const body = emptyBody();
+  if (!raw || typeof raw !== 'object') return body;
+  if (typeof raw.heightCm === 'number' && raw.heightCm > 0) body.heightCm = raw.heightCm;
+  if (typeof raw.weightKg === 'number' && raw.weightKg > 0) body.weightKg = raw.weightKg;
+  return body;
+}
+
+export function readHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((row) => row && typeof row.date === 'string' && typeof row.path === 'string')
+    .map((row) => ({
+      id: typeof row.id === 'string' ? row.id : row.date,
+      date: row.date,
+      path: row.path,
+      rounds: typeof row.rounds === 'number' ? row.rounds : 0,
+      durationMs: typeof row.durationMs === 'number' ? row.durationMs : null,
+      gains: { ...gainBag(), ...(row.gains || {}) },
+      modified: Array.isArray(row.modified) ? row.modified.filter((name) => typeof name === 'string') : [],
+      pathChange: typeof row.pathChange === 'string' ? row.pathChange : null,
+    }));
+}
+
+export function publicHistory(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    path: row.path,
+    rounds: row.rounds || 0,
+    durationMs: row.durationMs || null,
+    gains: { ...gainBag(), ...(row.gains || {}) },
+    modified: row.modified || [],
+    pathChange: row.pathChange || null,
+  };
+}
+
 export function serialize(state) {
   return {
     version: 2,
@@ -722,6 +863,10 @@ export function serialize(state) {
     weekly: state.weekly,
     ascend: state.ascend,
     difficulty: state.difficulty,
+    path: state.path,
+    body: state.body,
+    photoURL: state.photoURL || '',
+    history: (state.history || []).map(publicHistory),
   };
 }
 
@@ -781,6 +926,10 @@ export function parseProgress(data) {
       accent: Boolean(data.ascend?.accent),
     },
     difficulty: readDifficulty(data.difficulty),
+    path: workoutPath(data.path).id,
+    body: readBody(data.body),
+    photoURL: typeof data.photoURL === 'string' ? data.photoURL : '',
+    history: readHistory(data.history),
   };
 }
 

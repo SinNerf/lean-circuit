@@ -1,3 +1,5 @@
+import { PATH_GUIDES } from './pathGuides.js';
+
 export const MEDICAL =
   'This is general form guidance, not medical advice. If pain persists, see a doctor or physiotherapist.';
 
@@ -410,6 +412,9 @@ for (const item of ITEMS) {
 }
 for (const [id, extra] of Object.entries(MULTIS)) {
   GUIDE_MAP[id] = { id, pose: extra.strips[0], ...extra };
+}
+for (const guide of PATH_GUIDES) {
+  GUIDE_MAP[guide.id] = guide;
 }
 
 export function getGuide(id) {

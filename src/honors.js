@@ -5,6 +5,7 @@ import {
   countChecks,
   daysBetween,
   levelInfo,
+  applySessionLog,
   applyWeeklyTargets,
   rollDay,
   roundCount,
@@ -90,6 +91,18 @@ export function mondayOf(iso) {
 export function inWeek(iso, start) {
   if (!iso || !start) return false;
   return iso >= start && iso <= addDays(start, 6);
+}
+
+export function currentStreak(days, today) {
+  const set = new Set(days || []);
+  let cursor = set.has(today) ? today : addDays(today, -1);
+  if (!set.has(cursor)) return 0;
+  let count = 0;
+  while (set.has(cursor)) {
+    count += 1;
+    cursor = addDays(cursor, -1);
+  }
+  return count;
 }
 
 export function longestStreak(days) {
@@ -252,6 +265,7 @@ export function ascend(state) {
 
 export function afterAction(state, today, rng = Math.random) {
   let next = applyWeeklyTargets(ensureWeekly(rollDay(state, today), today, rng), today);
+  next = applySessionLog(next, today);
   let badges = next.badges || {};
   const exerciseIds = EXERCISES.map((exercise) => exercise.id);
   if (exerciseIds.every((id) => next.seenExercises?.[id])) badges = award(badges, 'first-workout', today);
@@ -278,7 +292,8 @@ export function afterAction(state, today, rng = Math.random) {
     badges === (state.badges || {}) &&
     weekly === state.weekly &&
     weeklyBadges === (state.weeklyBadges || []) &&
-    titleRank === (state.titleRank || 0)
+    titleRank === (state.titleRank || 0) &&
+    next.history === state.history
   ) {
     return state;
   }

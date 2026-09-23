@@ -15,6 +15,8 @@ import {
 } from '../src/honors.js';
 import {
   applyCell,
+  bodyweightFactor,
+  creditFor,
   applyWeeklyTargets,
   barSegments,
   beltName,
@@ -475,6 +477,22 @@ test('a form mark scales that set and an easier mark wins', () => {
   const before = state.stats.tier.strength;
   state = rateCell(state, 0, 1, 'clean', '2026-09-21');
   assert.equal(state.stats.tier.strength, before);
+});
+
+test('path and bodyweight multipliers stack on loaded moves only', () => {
+  assert.equal(bodyweightFactor(null), 1);
+  assert.equal(bodyweightFactor(0), 1);
+  assert.ok(Math.abs(bodyweightFactor(50) - 1) < 1e-9);
+  assert.equal(bodyweightFactor(200), 1.3);
+  assert.ok(bodyweightFactor(10) >= 0.85);
+  assert.equal(creditFor(15, pushUps, 'superhuman', null), 15);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', null) - 18.75) < 1e-9);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', 100) - 18.75 * 1.15) < 1e-9);
+  const jump = EXERCISES.find((exercise) => exercise.id === 'jump-squats');
+  assert.equal(creditFor(20, jump, 'warrior', 100), 25);
+  const shared = { id: 'day', date: '2026-09-22', path: 'warrior', rounds: 1, gains: { strength: 1 }, modified: [], pathChange: null };
+  assert.equal('heightCm' in shared, false);
+  assert.equal('weightKg' in shared, false);
 });
 
 test('service worker stays off inside the native webview', () => {

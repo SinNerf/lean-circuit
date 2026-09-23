@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function isFriend(uid) {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid));
+    }
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(uid)
+        && !request.resource.data.keys().hasAny(['height', 'heightCm', 'weight', 'weightKg', 'body']);
+      allow delete: if isOwner(uid);
+      match /private/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+      match /history/{logId} {
+        allow read: if isOwner(uid) || isFriend(uid);
+        allow create, update, delete: if isOwner(uid)
+          && !request.resource.data.keys().hasAny(['height', 'heightCm', 'weight', 'weightKg', 'body']);
+      }
+      match /friends/{friendId} {
+        allow read: if isOwner(uid) || (signedIn() && request.auth.uid == friendId);
+        allow create, update, delete: if isOwner(uid);
+      }
+    }
+  }
+}

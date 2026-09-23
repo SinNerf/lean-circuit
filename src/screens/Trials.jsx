@@ -17,6 +17,11 @@ function TrialRow({ trial, requirement, accent }) {
           {requirement}
         </p>
       ) : null}
+      {trial.id === 'power-6' && game.state.body?.heightCm ? (
+        <p data-testid="height-mark" className="mt-2 font-body text-[12px] font-normal leading-none text-muted">
+          1.5× your height is {Math.round(game.state.body.heightCm * 1.5)} cm
+        </p>
+      ) : null}
       {passed ? (
         <p data-testid={`passed-${trial.id}`} className="mt-2 font-body text-[12px] font-normal leading-none text-muted">
           {formatDate(passed)}
