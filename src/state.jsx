@@ -437,11 +437,20 @@ export function GameProvider({ children }) {
     tab,
     setTab(id) {
       setTabState(id);
-      if (id !== 'skills') setSkillPath(null);
-      if (id !== 'profile') {
-        setProfileView('self');
-        setFriend(null);
-        setChallengeWith(null);
+      setSkillPath(null);
+      setProfileView('self');
+      setFriend(null);
+      setChallengeWith(null);
+      if (id === 'leaderboard') {
+        setChallengeError('');
+        if (!account?.uid) {
+          setBoard({ rows: [] });
+          return;
+        }
+        ensureCode(account.uid)
+          .then(() => loadBoard(account.uid))
+          .then((next) => setBoard(next))
+          .catch(() => setBoard({ rows: [] }));
       }
     },
     profileView,
@@ -729,9 +738,15 @@ export function GameProvider({ children }) {
     openHistory() {
       setProfileView('history');
     },
+    openSkills() {
+      setProfileView('skills');
+    },
     async openBoard() {
       setChallengeError('');
-      setProfileView('board');
+      setTabState('leaderboard');
+      setProfileView('self');
+      setFriend(null);
+      setChallengeWith(null);
       if (!account?.uid) {
         setBoard({ rows: [] });
         return;
@@ -758,12 +773,12 @@ export function GameProvider({ children }) {
         return;
       }
       if (profileView === 'friend') {
-        setProfileView('board');
+        setProfileView('self');
         setFriend(null);
         return;
       }
       if (profileView === 'challenge') {
-        setProfileView('board');
+        setProfileView('self');
         setChallengeWith(null);
         setChallengeError('');
         return;

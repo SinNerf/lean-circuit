@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CLASSES, PATHS } from '../catalog.js';
 import { friendCode } from '../challenge.js';
 import { CORE_BADGES, currentStreak, formatClock, longestStreak, roman } from '../honors.js';
 import { BadgeEmblem } from '../icons/marks.jsx';
@@ -21,15 +22,33 @@ function earnedBadges(badges, weekly) {
   return rows;
 }
 
+function unlockedNames(skills) {
+  const names = [];
+  for (const node of CLASSES) {
+    if (skills?.[node.id]) names.push(node.name);
+  }
+  for (const path of PATHS) {
+    for (const node of path.nodes) {
+      if (skills?.[node.id]) names.push(node.name);
+    }
+  }
+  return names;
+}
+
 export function Profile() {
   const game = useGame();
   if (game.profileView === 'edit') return <EditProfile />;
   if (game.profileView === 'history') return <History rows={game.state.history} today={game.today} />;
   if (game.profileView === 'friend-history') return <History rows={game.friend?.history || []} today={game.today} />;
-  if (game.profileView === 'board') return <Board />;
+  return <OwnSheet />;
+}
+
+export function Leaderboard() {
+  const game = useGame();
+  if (game.profileView === 'friend-history') return <History rows={game.friend?.history || []} today={game.today} />;
   if (game.profileView === 'challenge') return <Challenge />;
   if (game.profileView === 'friend') return <FriendSheet />;
-  return <OwnSheet />;
+  return <Board />;
 }
 
 function OwnSheet() {
@@ -54,7 +73,8 @@ function OwnSheet() {
       badges={badges}
       featuredId={game.state.featuredBadge}
       onFeature={game.setFeatured}
-      onFriends={game.openBoard}
+      skillNames={unlockedNames(game.state.skills)}
+      onSkills={game.openSkills}
       flamePulse={game.flamePulse}
       badgePulse={game.badgePulse}
       onHistory={game.openHistory}
@@ -94,7 +114,8 @@ function FriendSheet() {
         badges={badges}
         featuredId={friend.featuredBadge || ''}
         onFeature={null}
-        onFriends={null}
+        skillNames={null}
+        onSkills={null}
         flamePulse={false}
         badgePulse=""
         onHistory={friend.history ? () => game.openFriendHistory() : null}
@@ -107,11 +128,12 @@ function FriendSheet() {
   );
 }
 
-function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, longest, badges, featuredId, onFeature, onFriends, flamePulse, badgePulse, onHistory, ascend }) {
+function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, longest, badges, featuredId, onFeature, skillNames, onSkills, flamePulse, badgePulse, onHistory, ascend }) {
   const featured = badges.find((badge) => badge.id === featuredId) || null;
+  const label = 'font-body text-[13px] font-medium leading-none text-muted';
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-col items-center pb-8 text-center">
-      <section className="flex w-full flex-col items-center px-4 pt-4">
+    <div className="pb-8">
+      <header className="flex flex-col items-center px-4 pt-4 text-center">
         <Portrait src={photo} tone={tone.tone} cape={tone.cape} shadow={tone.shadow} />
         <p data-testid="hero-name" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
           {name}
@@ -128,17 +150,19 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
             Ascend
           </button>
         ) : null}
-      </section>
-      <section className="flex w-full flex-col items-center px-4 pt-8">
-        <p data-testid="path-open" className="font-body text-[12px] font-normal leading-none text-muted">
+      </header>
+      <section className="px-4 pt-8 text-left">
+        <h2 className={label}>Path</h2>
+        <p data-testid="path-open" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
           {path.name}
         </p>
       </section>
-      <section className="flex w-full flex-col items-center px-4 pt-8">
-        <p data-testid="workouts-logged" className="font-body text-[14px] font-normal text-primary">
+      <section className="px-4 pt-8 text-left">
+        <h2 className={label}>Quick stats</h2>
+        <p data-testid="workouts-logged" className="mt-2 font-body text-[14px] font-normal text-primary">
           {workouts} workouts logged
         </p>
-        <div className="mt-2 flex items-center justify-center gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <p data-testid="streak-current" className="font-display text-[64px] font-semibold leading-none text-primary">
             {streak}
           </p>
@@ -148,34 +172,27 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
         <p data-testid="streak-longest" className="mt-4 font-body text-[14px] font-normal text-primary">
           Longest streak {longest}
         </p>
-        {onFriends ? (
-          <div className="mt-4 flex justify-center">
-            <button type="button" data-testid="friends-open" onClick={onFriends} className={proceed}>
-              Friends
-            </button>
-          </div>
-        ) : null}
       </section>
-      <section className="flex w-full flex-col items-center px-4 pt-8">
-        <h2 className="font-body text-[13px] font-medium leading-none text-muted">Badges</h2>
+      <section className="px-4 pt-8 text-left">
+        <h2 className={label}>Badges</h2>
         {featured ? (
           <div data-testid="featured-badge" className="mt-4 text-gold">
-            <BadgeEmblem id={emblemId(featured.id)} earned pulse={badgePulse === featured.id || badgePulse === emblemId(featured.id)} className="mx-auto h-24 w-24" />
+            <BadgeEmblem id={emblemId(featured.id)} earned pulse={badgePulse === featured.id || badgePulse === emblemId(featured.id)} className="h-24 w-24" />
             <p className="mt-2 font-body text-[14px] font-normal text-primary">{featured.name}</p>
           </div>
         ) : null}
-        <div data-testid="badge-shelf" className="mt-2 flex flex-wrap justify-center gap-2">
+        <div data-testid="badge-shelf" className="mt-2 flex flex-wrap justify-start gap-2">
           {badges.map((badge) => {
             const markClass = badge.id === featuredId ? 'ring-2 ring-gold' : '';
             const body = (
               <>
-                <BadgeEmblem id={emblemId(badge.id)} earned pulse={badgePulse === badge.id} className="mx-auto h-8 w-8 text-gold" />
+                <BadgeEmblem id={emblemId(badge.id)} earned pulse={badgePulse === badge.id} className="h-8 w-8 text-gold" />
                 <p className="mt-2 font-body text-[12px] font-normal leading-none text-primary">{badge.name}</p>
               </>
             );
             if (!onFeature) {
               return (
-                <div key={badge.id} data-testid={`badge-earned-${badge.id}`} className="w-20 text-center text-primary">
+                <div key={badge.id} data-testid={`badge-earned-${badge.id}`} className="w-20 text-left text-primary">
                   {body}
                 </div>
               );
@@ -186,7 +203,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
                 type="button"
                 data-testid={`badge-earned-${badge.id}`}
                 onClick={() => onFeature(badge.id)}
-                className={`w-20 text-center text-primary ${markClass}`}
+                className={`w-20 text-left text-primary ${markClass}`}
               >
                 {body}
               </button>
@@ -194,9 +211,31 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
           })}
         </div>
       </section>
+      {skillNames ? (
+        <section className="px-4 pt-8 text-left">
+          <h2 className={label}>Skills</h2>
+          <div data-testid="unlocked-skills" className="mt-2">
+            {skillNames.length ? (
+              skillNames.map((skill) => (
+                <p key={skill} className="mb-2 font-body text-[14px] font-normal leading-none text-primary">
+                  {skill}
+                </p>
+              ))
+            ) : (
+              <p className="font-body text-[14px] font-normal text-muted">None yet</p>
+            )}
+          </div>
+          {onSkills ? (
+            <button type="button" data-testid="all-skills" onClick={onSkills} className={`mt-4 ${proceed}`}>
+              All skills
+            </button>
+          ) : null}
+        </section>
+      ) : null}
       {onHistory ? (
-        <section className="flex w-full flex-col items-center px-4 pt-8">
-          <button type="button" data-testid="view-history" onClick={onHistory} className={proceed}>
+        <section className="px-4 pt-8 text-left">
+          <h2 className={label}>History</h2>
+          <button type="button" data-testid="view-history" onClick={onHistory} className={`mt-2 ${proceed}`}>
             View History
           </button>
         </section>
@@ -317,21 +356,22 @@ function Board() {
   const [below, setBelow] = useState(false);
   const selfRef = useRef(null);
   const me = game.account?.uid;
-  const friends = game.board.rows || [];
-  const ranked = friends.length
-    ? [
-        ...friends,
-        {
-          uid: me,
-          name: game.state.name,
-          photo: game.state.photoData || '',
-          path: game.state.path,
-          level: game.sheet.level,
-          streak: currentStreak(game.state.trainingDays, game.today),
-        },
-      ].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')))
-    : [];
-  const selfRank = ranked.findIndex((row) => row.uid === me);
+  const friends = (game.board.rows || []).filter((row) => row.uid !== me);
+  const self = me
+    ? {
+        uid: me,
+        name: game.state.name,
+        photo: game.state.photoData || '',
+        path: game.state.path,
+        level: game.sheet.level,
+        streak: currentStreak(game.state.trainingDays, game.today),
+      }
+    : null;
+  const friendsRanked = [...friends].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const listed = self ? [self, ...friendsRanked] : friendsRanked;
+  const standings = [...listed].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const rankOf = new Map(standings.map((row, index) => [row.uid, index + 1]));
+  const selfRank = listed.findIndex((row) => row.uid === me);
 
   useEffect(() => {
     const node = selfRef.current;
@@ -347,47 +387,41 @@ function Board() {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [ranked.length, me, selfRank]);
+  }, [listed.length, me, selfRank]);
 
   return (
     <div className="px-4 pb-8 pt-4">
-      {ranked.length ? (
-        <div data-testid="friend-board">
-          {below && selfRank >= 0 ? <BoardRow row={ranked[selfRank]} rank={selfRank + 1} pinned /> : null}
-          {ranked.map((row, index) => (
-            <BoardRow key={row.uid} row={row} rank={index + 1} selfRef={row.uid === me ? selfRef : null} />
+      {listed.length ? (
+        <div data-testid="leaderboard">
+          {below && selfRank >= 0 ? <BoardRow row={listed[selfRank]} rank={rankOf.get(me)} pinned /> : null}
+          {listed.map((row) => (
+            <BoardRow key={row.uid} row={row} rank={rankOf.get(row.uid)} selfRef={row.uid === me ? selfRef : null} />
           ))}
         </div>
-      ) : (
-        <p data-testid="board-empty" className="font-body text-[14px] font-normal text-muted">
-          No friends yet.
-        </p>
-      )}
+      ) : null}
       {game.account ? (
         <form
-          className="pt-8"
+          className="pt-8 text-left"
           onSubmit={(event) => {
             event.preventDefault();
             game.saveFriend(code);
             setCode('');
           }}
         >
-          <p className="text-center font-body text-[12px] font-normal text-muted">Your code</p>
-          <p data-testid="friend-code" className="mt-2 text-center font-body text-[14px] font-normal text-primary">
+          <p className="font-body text-[12px] font-normal text-muted">Your code</p>
+          <p data-testid="friend-code" className="mt-2 font-body text-[14px] font-normal text-primary">
             {friendCode(game.account.uid)}
           </p>
           <input
             data-testid="friend-input"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            className="mt-4 h-12 w-full border-b border-line bg-base px-2 text-center font-body text-[14px] font-normal outline-none"
+            className="mt-4 h-12 w-full border-b border-line bg-base px-2 font-body text-[14px] font-normal outline-none"
           />
-          <div className="mt-4 flex justify-center">
-            <button type="submit" data-testid="friend-add" className={proceed}>
-              Add friend
-            </button>
-          </div>
-          {game.authError ? <p className="mt-4 text-center font-body text-[14px] font-normal text-primary">{game.authError}</p> : null}
+          <button type="submit" data-testid="friend-add" className={`mt-4 ${proceed}`}>
+            Add friend
+          </button>
+          {game.authError ? <p className="mt-4 font-body text-[14px] font-normal text-primary">{game.authError}</p> : null}
         </form>
       ) : null}
     </div>

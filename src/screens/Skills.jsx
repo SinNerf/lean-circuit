@@ -17,11 +17,15 @@ function SkillRow({ node, accent }) {
   const game = useGame();
   const achieved = game.state.skills[node.id];
   const ready = !achieved && readyNode(node, game.state.stats.tier);
+  const tone = achieved || ready ? 'text-primary' : 'text-muted';
   return (
-    <div data-testid={`skill-${node.id}`} className="mb-2 flex items-center justify-between gap-2 border-b border-line py-2">
-      <p className={`font-body text-[14px] font-normal leading-none ${achieved || ready ? 'text-primary' : 'text-muted'}`}>{node.name}</p>
+    <div data-testid={`skill-${node.id}`} className="flex items-start justify-between gap-4 border-b border-line py-4">
+      <div className="min-w-0">
+        <p className={`font-body text-[14px] font-normal leading-none ${tone}`}>{node.name}</p>
+        {node.detail ? <p className="mt-2 font-body text-[12px] font-normal leading-snug text-muted">{node.detail}</p> : null}
+      </div>
       {achieved ? (
-        <p data-testid={`skill-date-${node.id}`} className="font-body text-[12px] font-normal leading-none text-muted">
+        <p data-testid={`skill-date-${node.id}`} className="shrink-0 font-body text-[12px] font-normal leading-none text-muted">
           {formatDate(achieved)}
         </p>
       ) : null}
@@ -31,7 +35,7 @@ function SkillRow({ node, accent }) {
             Confirm
           </AccentButton>
         ) : (
-          <button type="button" data-testid={`confirm-${node.id}`} onClick={() => game.confirmSkill(node.id)} className="font-body text-[14px] font-normal text-primary">
+          <button type="button" data-testid={`confirm-${node.id}`} onClick={() => game.confirmSkill(node.id)} className="shrink-0 font-body text-[14px] font-normal text-primary">
             Confirm
           </button>
         )
@@ -57,38 +61,34 @@ export function Skills() {
     }
   }
   const accentId = classAccent || pathAccent;
+  const label = 'font-body text-[13px] font-medium leading-none text-muted';
   return (
-    <div className="pb-8">
+    <div className="pb-8 text-left">
       <section className="px-4 pt-4">
-        <h2 className="font-body text-[13px] font-medium leading-none text-muted">Classes</h2>
+        <h2 className={label}>Classes</h2>
         <div className="mt-2">
           {CLASSES.map((node) => (
             <SkillRow key={node.id} node={node} accent={node.id === accentId} />
           ))}
         </div>
       </section>
-      <section className="px-4 pt-8">
-        <h2 className="font-body text-[13px] font-medium leading-none text-muted">Paths</h2>
-        <div className="mt-2">
-          {PATHS.map((path) => (
-            <div key={path.id} className="mb-4">
-              <p data-testid={`path-${path.id}`} className="font-body text-[14px] font-normal text-primary">
-                {PATH_LABEL[path.id]}
-              </p>
-              {pathNodes(path).map((node) => (
-                <div key={node.id} data-testid={`node-${path.id}-T${node.tier}`}>
-                  <SkillRow node={{ ...node, name: `T${node.tier}` }} accent={node.id === accentId} />
-                  {node.id === 'thunderclap' && game.state.body?.heightCm ? (
-                    <p data-testid="height-mark" className="font-body text-[12px] font-normal text-muted">
-                      {Math.round(game.state.body.heightCm)} cm
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </section>
+      {PATHS.map((path) => (
+        <section key={path.id} className="px-4 pt-8">
+          <h2 className={label}>{PATH_LABEL[path.id]}</h2>
+          <div className="mt-2">
+            {pathNodes(path).map((node) => (
+              <div key={node.id} data-testid={`node-${path.id}-T${node.tier}`}>
+                <SkillRow node={node} accent={node.id === accentId} />
+                {node.id === 'thunderclap' && game.state.body?.heightCm ? (
+                  <p data-testid="height-mark" className="pb-2 font-body text-[12px] font-normal text-muted">
+                    {Math.round(game.state.body.heightCm)} cm
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

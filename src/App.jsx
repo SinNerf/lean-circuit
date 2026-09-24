@@ -6,7 +6,7 @@ import { Circuit } from './screens/Circuit.jsx';
 import { Stats } from './screens/Stats.jsx';
 import { Trials } from './screens/Trials.jsx';
 import { Skills } from './screens/Skills.jsx';
-import { Profile } from './screens/Profile.jsx';
+import { Leaderboard, Profile } from './screens/Profile.jsx';
 import { Settings } from './screens/Settings.jsx';
 import { FormSheet } from './screens/FormSheet.jsx';
 
@@ -18,7 +18,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape' && game.settingsOpen) game.closeSettings();
-      if (event.key === 'Escape' && game.tab === 'profile' && game.profileView !== 'self') game.closeProfilePane();
+      if (event.key === 'Escape' && (game.tab === 'profile' || game.tab === 'leaderboard') && game.profileView !== 'self') game.closeProfilePane();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -36,8 +36,9 @@ function Shell() {
   let body = <Circuit />;
   if (game.settingsOpen) body = <Settings />;
   else if (game.tab === 'stats') body = <Stats />;
+  else if (game.tab === 'leaderboard') body = <Leaderboard />;
   else if (game.tab === 'trials') body = <Trials />;
-  else if (game.tab === 'skills') body = <Skills />;
+  else if (game.tab === 'profile' && game.profileView === 'skills') body = <Skills />;
   else if (game.tab === 'profile') body = <Profile />;
 
   return (

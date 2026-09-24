@@ -1,12 +1,11 @@
 import { Pencil, Settings, X } from 'lucide-react';
 import { useGame } from '../state.jsx';
-import { PATHS } from '../catalog.js';
 
 const TABS = [
   ['circuit', 'Circuit'],
   ['stats', 'Stats'],
+  ['leaderboard', 'Leaderboard'],
   ['trials', 'Trials'],
-  ['skills', 'Skills'],
   ['profile', 'Profile'],
 ];
 
@@ -31,15 +30,8 @@ export function Header() {
         <X size={24} />
       </button>
     );
-  } else if (game.tab === 'skills' && game.skillPath) {
-    title = PATH_LABEL[game.skillPath] || PATHS.find((path) => path.id === game.skillPath)?.name || 'Skills';
-    icon = (
-      <button type="button" aria-label="Close" data-testid="close-path" onClick={game.closePath} className="grid h-10 w-10 place-items-center text-primary">
-        <X size={24} />
-      </button>
-    );
-  } else if (game.tab === 'profile' && game.profileView !== 'self') {
-    title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'board' ? 'Friends' : game.profileView === 'challenge' ? 'Challenge' : game.friend?.name || 'Profile';
+  } else if ((game.tab === 'profile' || game.tab === 'leaderboard') && game.profileView !== 'self') {
+    title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'skills' ? 'Skills' : game.profileView === 'challenge' ? 'Challenge' : game.friend?.name || 'Profile';
     icon = (
       <button type="button" aria-label="Close" data-testid="close-profile" onClick={game.closeProfilePane} className="grid h-10 w-10 place-items-center text-primary">
         <X size={24} />
@@ -88,7 +80,7 @@ export function Nav() {
                 game.closeSettings();
                 game.setTab(id);
               }}
-              className={`font-body text-[12px] font-normal leading-none ${on ? 'text-primary' : 'text-muted'}`}
+              className={`px-1 text-center font-body text-[12px] font-normal leading-tight ${on ? 'text-primary' : 'text-muted'}`}
             >
               {label}
             </button>
