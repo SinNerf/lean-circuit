@@ -355,6 +355,7 @@ function Board() {
   const [code, setCode] = useState('');
   const [below, setBelow] = useState(false);
   const selfRef = useRef(null);
+  const listRef = useRef(null);
   const me = game.account?.uid;
   const friends = (game.board.rows || []).filter((row) => row.uid !== me);
   const self = me
@@ -376,7 +377,7 @@ function Board() {
   useEffect(() => {
     const node = selfRef.current;
     if (!node) return undefined;
-    const root = node.closest('main');
+    const root = listRef.current;
     const observer = new IntersectionObserver(
       ([entry]) => {
         const top = entry.boundingClientRect.top;
@@ -390,18 +391,21 @@ function Board() {
   }, [listed.length, me, selfRank]);
 
   return (
-    <div className="px-4 pb-8 pt-4">
-      {listed.length ? (
-        <div data-testid="leaderboard">
-          {below && selfRank >= 0 ? <BoardRow row={listed[selfRank]} rank={rankOf.get(me)} pinned /> : null}
-          {listed.map((row) => (
-            <BoardRow key={row.uid} row={row} rank={rankOf.get(row.uid)} selfRef={row.uid === me ? selfRef : null} />
-          ))}
-        </div>
-      ) : null}
+    <div className="absolute inset-0 flex flex-col">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
+        {listed.length ? (
+          <div data-testid="leaderboard">
+            {below && selfRank >= 0 ? <BoardRow row={listed[selfRank]} rank={rankOf.get(me)} pinned /> : null}
+            {listed.map((row) => (
+              <BoardRow key={row.uid} row={row} rank={rankOf.get(row.uid)} selfRef={row.uid === me ? selfRef : null} />
+            ))}
+          </div>
+        ) : null}
+      </div>
       {game.account ? (
         <form
-          className="pt-8 text-left"
+          data-testid="friend-tools"
+          className="shrink-0 border-t border-line px-4 pb-4 pt-4 text-left"
           onSubmit={(event) => {
             event.preventDefault();
             game.saveFriend(code);
@@ -409,9 +413,22 @@ function Board() {
           }}
         >
           <p className="font-body text-[12px] font-normal text-muted">Your code</p>
-          <p data-testid="friend-code" className="mt-2 font-body text-[14px] font-normal text-primary">
-            {friendCode(game.account.uid)}
-          </p>
+          <div className="mt-2 flex items-center gap-4">
+            <p data-testid="friend-code" className="font-body text-[14px] font-normal text-primary">
+              {friendCode(game.account.uid)}
+            </p>
+            <button
+              type="button"
+              data-testid="friend-copy"
+              onClick={() => {
+                const code = friendCode(game.account.uid);
+                if (navigator.clipboard?.writeText) navigator.clipboard.writeText(code);
+              }}
+              className="font-body text-[14px] font-normal text-primary"
+            >
+              Copy
+            </button>
+          </div>
           <input
             data-testid="friend-input"
             value={code}

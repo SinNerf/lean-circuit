@@ -37,6 +37,6 @@ Progress is stored in the app. It survives a force-stop and a reboot. It is wipe
 
 Oswald and Work Sans ship inside the app, so a later workout does not need a network.
 
-Guide photos are copies from the [free-exercise-db](https://github.com/yuhonas/free-exercise-db) dataset, stored in `public/guides`, so a workout does not need a network. Push-ups, jump squats, mountain climbers, and plank use the matching exercise. Reverse lunge, bicycle crunches, diamond push-ups, and tuck jumps use a close match from that dataset. Burpees, plank-to-downdog, bear crawl, archer push-up, broad jump, single-leg jump squat, hollow hold, and V-up stay text.
+Guide photos are copies from the [free-exercise-db](https://github.com/yuhonas/free-exercise-db) dataset, stored in `public/guides`, so a workout does not need a network. Push-ups, jump squats, mountain climbers, plank, squats, dead bug, superman, and Russian twists use the matching exercise. Reverse lunge, bicycle crunches, diamond push-ups, tuck jumps, glute bridge, side plank, jumping lunges, lying leg raises, broad jump, and V-up use a close match from that dataset. Burpees, plank-to-downdog, bear crawl, archer push-up, single-leg jump squat, hollow hold, knee push-ups, standing marches, knee plank, standing side bends, wall sit, and high knees stay text.
 
 Streak flame and badge pictures are from [Game-icons.net](https://game-icons.net) by Lorc, Delapouite, and Sbed, under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The files live in `src/assets/marks`.

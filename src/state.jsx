@@ -34,6 +34,7 @@ import {
   rateCell,
   creditFor,
   pathChangeEntry,
+  quarterStats,
   scaleStats,
   settlePaths,
   readBody,
@@ -73,7 +74,7 @@ function loadStats() {
 function loadState() {
   const base = freshState();
   const ramp = get(KEYS.ramp, base.ramp);
-  return settlePaths(scaleStats({
+  return settlePaths(quarterStats(scaleStats({
     ...base,
     name: get(KEYS.name, null),
     device: get(KEYS.device, null),
@@ -113,7 +114,7 @@ function loadState() {
     history: readHistory(get(KEYS.history, [])),
     featuredBadge: get(KEYS.featured, '') || '',
     accountUid: get(KEYS.account, null) || null,
-  }));
+  })));
 }
 
 function persist(state) {
@@ -716,14 +717,14 @@ export function GameProvider({ children }) {
         skills: { ...pendingImport.skills },
         speed: speedTier(pendingImport.speed),
       };
-      setState((s) => settlePaths(scaleStats({
+      setState((s) => settlePaths(quarterStats(scaleStats({
         ...s,
         ...pendingImport,
         name: s.name,
         device: s.device,
         photoData: s.photoData,
         accountUid: s.accountUid,
-      })));
+      }))));
       setPendingImport(null);
       setLevelUp(null);
       setToasts([]);

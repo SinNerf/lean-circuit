@@ -38,7 +38,8 @@ export const KEYS = {
   pathsSeen: 'lean-circuit-paths-seen',
 };
 
-export const STAT_POINT = 0.2;
+export const STAT_POINT = 0.05;
+const LEGACY_POINT = 0.2;
 
 export const PATH_UNLOCK_LINE =
   '5 full circuits on separate days, at least 3 of those days felt-clean as the dominant rating, and no more than 1 Quick Fix modification across those 5 sessions.';
@@ -609,58 +610,68 @@ function leadingRating(counts) {
   return ranked[0][0];
 }
 
-function divideCounter(value) {
-  return (Number(value) || 0) / 5;
+function divideCounter(value, by) {
+  return (Number(value) || 0) / by;
 }
 
-export function scaleStats(state) {
-  if (state.stats?.point === STAT_POINT) return state;
+function rescaleState(state, by, point) {
   const tier = {};
   const lifetime = {};
   for (const id of STAT_IDS) {
-    tier[id] = divideCounter(state.stats?.tier?.[id]);
-    lifetime[id] = divideCounter(state.stats?.lifetime?.[id]);
+    tier[id] = divideCounter(state.stats?.tier?.[id], by);
+    lifetime[id] = divideCounter(state.stats?.lifetime?.[id], by);
   }
   const exerciseLifetime = {};
-  for (const [id, value] of Object.entries(state.stats?.exerciseLifetime || {})) exerciseLifetime[id] = divideCounter(value);
+  for (const [id, value] of Object.entries(state.stats?.exerciseLifetime || {})) exerciseLifetime[id] = divideCounter(value, by);
   const daily = {};
   for (const [id, row] of Object.entries(state.stats?.daily || {})) {
-    daily[id] = row && typeof row === 'object' ? { ...row, amount: divideCounter(row.amount) } : row;
+    daily[id] = row && typeof row === 'object' ? { ...row, amount: divideCounter(row.amount, by) } : row;
   }
   const volumeByDay = {};
   for (const [day, bag] of Object.entries(state.volumeByDay || {})) {
     const next = {};
-    for (const [id, value] of Object.entries(bag || {})) next[id] = divideCounter(value);
+    for (const [id, value] of Object.entries(bag || {})) next[id] = divideCounter(value, by);
     volumeByDay[day] = next;
   }
   const history = (state.history || []).map((row) => ({
     ...row,
     gains: {
-      strength: divideCounter(row.gains?.strength),
-      power: divideCounter(row.gains?.power),
-      endurance: divideCounter(row.gains?.endurance),
-      core: divideCounter(row.gains?.core),
-      cardio: divideCounter(row.gains?.cardio),
+      strength: divideCounter(row.gains?.strength, by),
+      power: divideCounter(row.gains?.power, by),
+      endurance: divideCounter(row.gains?.endurance, by),
+      core: divideCounter(row.gains?.core, by),
+      cardio: divideCounter(row.gains?.cardio, by),
     },
   }));
   const cells = {};
   for (const [key, cell] of Object.entries(state.checks?.cells || {})) {
     const parts = {};
-    for (const [stat, amount] of Object.entries(cell.parts || {})) parts[stat] = divideCounter(amount);
+    for (const [stat, amount] of Object.entries(cell.parts || {})) parts[stat] = divideCounter(amount, by);
     cells[key] = {
       ...cell,
-      credit: divideCounter(cell.credit),
-      target: typeof cell.target === 'number' ? divideCounter(cell.target) : cell.target,
+      credit: divideCounter(cell.credit, by),
+      target: typeof cell.target === 'number' ? divideCounter(cell.target, by) : cell.target,
       parts,
     };
   }
   return {
     ...state,
-    stats: { ...(state.stats || emptyStats()), point: STAT_POINT, tier, lifetime, exerciseLifetime, daily },
+    stats: { ...(state.stats || emptyStats()), point, tier, lifetime, exerciseLifetime, daily },
     volumeByDay,
     history,
     checks: { ...(state.checks || {}), cells },
   };
+}
+
+export function scaleStats(state) {
+  const point = state.stats?.point;
+  if (point === LEGACY_POINT || point === STAT_POINT) return state;
+  return rescaleState(state, 5, LEGACY_POINT);
+}
+
+export function quarterStats(state) {
+  if (state.stats?.point === STAT_POINT) return state;
+  return rescaleState(state, 4, STAT_POINT);
 }
 
 function circuitDates(state) {

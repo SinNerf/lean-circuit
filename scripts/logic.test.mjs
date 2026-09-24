@@ -27,6 +27,7 @@ import {
   pathSelectionOpen,
   prescription,
   rateCell,
+  quarterStats,
   scaleStats,
   settlePaths,
   recoveryDue,
@@ -61,12 +62,12 @@ const pushUps = EXERCISES[1];
 
 test('visual tier, belt, and empty bar on a multiple of 10', () => {
   assert.equal(visualTier(0), 0);
-  assert.equal(visualTier(0.2), 1);
-  assert.equal(visualTier(0.6), 2);
-  assert.equal(visualTier(1.4), 3);
-  assert.equal(visualTier(1.6), 3);
-  assert.equal(visualTier(204.6), 10);
-  assert.equal(visualTier(9), 5);
+  assert.equal(visualTier(0.05), 1);
+  assert.equal(visualTier(0.15), 2);
+  assert.equal(visualTier(0.35), 3);
+  assert.equal(visualTier(0.4), 3);
+  assert.equal(visualTier(51.15), 10);
+  assert.equal(visualTier(2.25), 5);
   assert.equal(barSegments(0), 0);
   assert.equal(barSegments(4), 4);
   assert.equal(barSegments(10), 0);
@@ -137,7 +138,7 @@ test('daily cap, uncheck refund, reset keeps credit, and a second exercise still
 });
 
 test('level is the floor of the average of six visual tiers', () => {
-  const info = levelInfo({ strength: 3.2, power: 5.6, endurance: 5.2, core: 4.4, cardio: 7.2 }, 0);
+  const info = levelInfo({ strength: 0.8, power: 1.4, endurance: 1.3, core: 1.1, cardio: 1.8 }, 0);
   assert.equal(info.visual.strength, 4);
   assert.equal(info.visual.cardio, 5);
   assert.equal(info.visual.speed, 0);
@@ -147,12 +148,12 @@ test('level is the floor of the average of six visual tiers', () => {
 
 test('trials and suggestions follow tier and class skills', () => {
   const zeros = { strength: 0, power: 0, endurance: 0, core: 0, cardio: 0 };
-  assert.equal(trialOpen(TRIALS[0], { ...zeros, strength: 8 }, {}), true);
-  assert.equal(trialOpen(TRIALS[1], { ...zeros, strength: 8 }, {}), false);
+  assert.equal(trialOpen(TRIALS[0], { ...zeros, strength: 2 }, {}), true);
+  assert.equal(trialOpen(TRIALS[1], { ...zeros, strength: 2 }, {}), false);
   assert.equal(trialOpen(CLASS_TRIALS[0], zeros, {}), false);
   assert.equal(trialOpen(CLASS_TRIALS[0], zeros, { berserker: '2026-09-22' }), true);
-  assert.equal(suggestionFor(pushUps, { ...zeros, strength: 255 }, { adopted: {}, dismissed: {} }), true);
-  assert.equal(suggestionFor(pushUps, { ...zeros, strength: 255 }, { adopted: {}, dismissed: { 'push-ups': true } }), false);
+  assert.equal(suggestionFor(pushUps, { ...zeros, strength: 63.75 }, { adopted: {}, dismissed: {} }), true);
+  assert.equal(suggestionFor(pushUps, { ...zeros, strength: 63.75 }, { adopted: {}, dismissed: { 'push-ups': true } }), false);
 });
 
 test('recovery needs three previous full days and import keeps counters', () => {
@@ -500,11 +501,11 @@ test('path and bodyweight multipliers stack on loaded moves only', () => {
   assert.ok(Math.abs(bodyweightFactor(50) - 1) < 1e-9);
   assert.equal(bodyweightFactor(200), 1.3);
   assert.ok(bodyweightFactor(10) >= 0.85);
-  assert.equal(creditFor(15, pushUps, 'superhuman', null), 3);
-  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', null) - 3.75) < 1e-9);
-  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', 100) - 3.75 * 1.15) < 1e-9);
+  assert.equal(creditFor(15, pushUps, 'superhuman', null), 0.75);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', null) - 0.9375) < 1e-9);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', 100) - 0.9375 * 1.15) < 1e-9);
   const jump = EXERCISES.find((exercise) => exercise.id === 'jump-squats');
-  assert.equal(creditFor(20, jump, 'warrior', 100), 5);
+  assert.equal(creditFor(20, jump, 'warrior', 100), 1.25);
   const shared = { id: 'day', date: '2026-09-22', path: 'warrior', rounds: 1, gains: { strength: 1 }, modified: [], pathChange: null };
   assert.equal('heightCm' in shared, false);
   assert.equal('weightKg' in shared, false);
@@ -597,7 +598,7 @@ function gateState(days) {
 test('starter path stays locked until five clean-enough circuits, and history stays', () => {
   assert.equal(freshState().path, 'starter');
   assert.equal(freshState().pathsUnlocked, false);
-  assert.equal(freshState().stats.point, 0.2);
+  assert.equal(freshState().stats.point, 0.05);
   const dates = ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'];
   const five = gateState(dates.map((date) => gateDay(date, 'clean')));
   assert.equal(pathSelectionOpen(five), true);
@@ -673,12 +674,52 @@ test('saved counters divide by 5 once and a starter week stays a small strength 
   assert.equal(prescription(bridge, prog, 0.55).credit, 8);
   const kneeSet = creditFor(7, knee, 'starter', null);
   const bridgeSet = creditFor(8, bridge, 'starter', null);
-  assert.ok(Math.abs(kneeSet - 1.05) < 1e-9);
-  assert.ok(Math.abs(bridgeSet - 1.2) < 1e-9);
+  assert.ok(Math.abs(kneeSet - 0.2625) < 1e-9);
+  assert.ok(Math.abs(bridgeSet - 0.3) < 1e-9);
   const weekTier = 4 * (kneeSet + bridgeSet);
-  assert.ok(Math.abs(weekTier - 9) < 1e-9);
+  assert.ok(Math.abs(weekTier - 2.25) < 1e-9);
   assert.equal(visualTier(weekTier), 5);
   assert.equal(visualTier(4 * 4 * (kneeSet + bridgeSet)), 7);
+});
+
+test('saved counters divide by 4 once and the older point flag is left at 0.2', () => {
+  let state = freshState();
+  state.stats.point = 0.2;
+  state.stats.tier.strength = 9;
+  state.stats.lifetime.strength = 36;
+  state.stats.exerciseLifetime.burpees = 20;
+  state.volumeByDay = { '2026-09-22': { 'push-ups': 10 } };
+  state.history = [
+    {
+      id: '2026-09-22',
+      date: '2026-09-22',
+      path: 'starter',
+      rounds: 4,
+      durationMs: null,
+      gains: { strength: 9, power: 0, endurance: 0, core: 0, cardio: 0 },
+      modified: [],
+      pathChange: null,
+    },
+  ];
+  state.checks.cells['0-0'] = { exerciseId: 'burpees', credit: 2, target: 2, tierGranted: true, parts: { strength: 2 } };
+  state.difficulty.targets['push-ups'] = 15;
+  const legacy = scaleStats(state);
+  assert.equal(legacy, state);
+  assert.equal(legacy.stats.point, 0.2);
+  const once = quarterStats(state);
+  assert.equal(once.stats.point, 0.05);
+  assert.equal(once.stats.tier.strength, 2.25);
+  assert.equal(once.stats.lifetime.strength, 9);
+  assert.equal(once.stats.exerciseLifetime.burpees, 5);
+  assert.equal(once.volumeByDay['2026-09-22']['push-ups'], 2.5);
+  assert.equal(once.history[0].gains.strength, 2.25);
+  assert.equal(once.checks.cells['0-0'].credit, 0.5);
+  assert.equal(once.difficulty.targets['push-ups'], 15);
+  const twice = quarterStats(once);
+  assert.equal(twice, once);
+  const kept = scaleStats(once);
+  assert.equal(kept, once);
+  assert.equal(kept.stats.tier.strength, 2.25);
 });
 
 test('service worker stays off inside the native webview', () => {
