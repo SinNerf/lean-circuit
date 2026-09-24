@@ -34,7 +34,14 @@ export const KEYS = {
   history: 'lean-circuit-history',
   featured: 'lean-circuit-featured',
   account: 'lean-circuit-account',
+  pathsOpen: 'lean-circuit-paths-open',
+  pathsSeen: 'lean-circuit-paths-seen',
 };
+
+export const STAT_POINT = 0.2;
+
+export const PATH_UNLOCK_LINE =
+  '5 full circuits on separate days, at least 3 of those days felt-clean as the dominant rating, and no more than 1 Quick Fix modification across those 5 sessions.';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const BELTS = ['bronze', 'silver', 'gold', 'platinum'];
@@ -77,7 +84,7 @@ export function daysBetween(start, end) {
 
 export function emptyStats() {
   const zero = () => ({ strength: 0, power: 0, endurance: 0, core: 0, cardio: 0 });
-  return { tier: zero(), lifetime: zero(), exerciseLifetime: {}, daily: {} };
+  return { point: STAT_POINT, tier: zero(), lifetime: zero(), exerciseLifetime: {}, daily: {} };
 }
 
 export function freshState() {
@@ -105,7 +112,9 @@ export function freshState() {
     weekly: null,
     ascend: { count: 0, accent: false },
     difficulty: emptyDifficulty(),
-    path: 'superhuman',
+    path: 'starter',
+    pathsUnlocked: false,
+    pathsUnlockSeen: false,
     body: emptyBody(),
     photoData: null,
     photoURL: '',
@@ -126,7 +135,13 @@ export function emptyDifficulty() {
 export function visualTier(stat) {
   const n = Number(stat) || 0;
   if (n <= 0) return 0;
-  return Math.floor(Math.log2(n + 1));
+  const equivalent = Math.round((n / STAT_POINT) * 1e6) / 1e6;
+  return Math.floor(Math.log2(equivalent + 1));
+}
+
+export function formatStat(stat) {
+  const rounded = Math.round((Number(stat) || 0) * 100) / 100;
+  return String(rounded);
 }
 
 export function beltIndex(tier) {
@@ -204,7 +219,7 @@ export function bodyweightFactor(kg) {
 export function creditFor(base, exercise, pathId, weightKg) {
   const pathFactor = workoutPath(pathId).multiplier;
   const body = exercise?.load ? bodyweightFactor(weightKg) : 1;
-  return base * pathFactor * body;
+  return base * STAT_POINT * pathFactor * body;
 }
 
 export function doseLine(rx) {
@@ -264,6 +279,7 @@ export function resumeSession(state, today) {
 
 function cloneStats(stats) {
   return {
+    point: stats?.point,
     tier: { ...stats.tier },
     lifetime: { ...stats.lifetime },
     exerciseLifetime: { ...stats.exerciseLifetime },
@@ -593,6 +609,107 @@ function leadingRating(counts) {
   return ranked[0][0];
 }
 
+function divideCounter(value) {
+  return (Number(value) || 0) / 5;
+}
+
+export function scaleStats(state) {
+  if (state.stats?.point === STAT_POINT) return state;
+  const tier = {};
+  const lifetime = {};
+  for (const id of STAT_IDS) {
+    tier[id] = divideCounter(state.stats?.tier?.[id]);
+    lifetime[id] = divideCounter(state.stats?.lifetime?.[id]);
+  }
+  const exerciseLifetime = {};
+  for (const [id, value] of Object.entries(state.stats?.exerciseLifetime || {})) exerciseLifetime[id] = divideCounter(value);
+  const daily = {};
+  for (const [id, row] of Object.entries(state.stats?.daily || {})) {
+    daily[id] = row && typeof row === 'object' ? { ...row, amount: divideCounter(row.amount) } : row;
+  }
+  const volumeByDay = {};
+  for (const [day, bag] of Object.entries(state.volumeByDay || {})) {
+    const next = {};
+    for (const [id, value] of Object.entries(bag || {})) next[id] = divideCounter(value);
+    volumeByDay[day] = next;
+  }
+  const history = (state.history || []).map((row) => ({
+    ...row,
+    gains: {
+      strength: divideCounter(row.gains?.strength),
+      power: divideCounter(row.gains?.power),
+      endurance: divideCounter(row.gains?.endurance),
+      core: divideCounter(row.gains?.core),
+      cardio: divideCounter(row.gains?.cardio),
+    },
+  }));
+  const cells = {};
+  for (const [key, cell] of Object.entries(state.checks?.cells || {})) {
+    const parts = {};
+    for (const [stat, amount] of Object.entries(cell.parts || {})) parts[stat] = divideCounter(amount);
+    cells[key] = {
+      ...cell,
+      credit: divideCounter(cell.credit),
+      target: typeof cell.target === 'number' ? divideCounter(cell.target) : cell.target,
+      parts,
+    };
+  }
+  return {
+    ...state,
+    stats: { ...(state.stats || emptyStats()), point: STAT_POINT, tier, lifetime, exerciseLifetime, daily },
+    volumeByDay,
+    history,
+    checks: { ...(state.checks || {}), cells },
+  };
+}
+
+function circuitDates(state) {
+  const dates = [];
+  for (const row of state.history || []) {
+    if ((row.rounds || 0) < 4) continue;
+    if (!dates.includes(row.date)) dates.push(row.date);
+  }
+  return dates;
+}
+
+function dayQuality(state, date) {
+  const sets = Object.values(state.difficulty?.ratings?.[date] || {});
+  if (sets.length) {
+    const counts = { clean: 0, slipped: 0, modify: 0 };
+    let fixes = 0;
+    for (const set of sets) {
+      if (set.rating === 'clean' || set.rating === 'slipped' || set.rating === 'modify') counts[set.rating] += 1;
+      if (set.rating === 'modify' || set.easier) fixes += 1;
+    }
+    return { clean: leadingRating(counts) === 'clean', fixes };
+  }
+  const row = (state.history || []).find((item) => item.date === date && (item.rounds || 0) >= 4);
+  return { clean: false, fixes: row?.modified?.length || 0 };
+}
+
+export function pathSelectionOpen(state) {
+  const scored = circuitDates(state).map((date) => dayQuality(state, date));
+  const zero = scored.filter((day) => day.fixes === 0);
+  const single = scored.filter((day) => day.fixes === 1);
+  const zeroClean = zero.filter((day) => day.clean).length;
+  if (zero.length >= 5 && zeroClean >= 3) return true;
+  if (zero.length >= 4 && single.length) {
+    if (zeroClean >= 3) return true;
+    if (zeroClean >= 2 && single.some((day) => day.clean)) return true;
+  }
+  return false;
+}
+
+export function settlePaths(state) {
+  const open = Boolean(state.pathsUnlocked) || pathSelectionOpen(state);
+  if (open) {
+    if (state.pathsUnlocked) return state;
+    return { ...state, pathsUnlocked: true };
+  }
+  if ((state.path || 'starter') === 'starter' && !state.pathsUnlocked) return state;
+  return { ...state, path: 'starter', pathsUnlocked: false };
+}
+
 function sessionDays(ratings, weekStart) {
   const end = addDays(weekStart, 6);
   return Object.keys(ratings || {})
@@ -758,7 +875,7 @@ export function sessionLog(state, today) {
   return {
     id: today,
     date: today,
-    path: state.path || 'superhuman',
+    path: state.path || 'starter',
     rounds,
     durationMs: durationMs || null,
     gains,
@@ -795,7 +912,7 @@ export function pathChangeEntry(state, today, nextPath) {
   const from = workoutPath(state.path).name;
   const to = workoutPath(nextPath).name;
   return {
-    id: `${today}:path:${state.path || 'superhuman'}:${nextPath}`,
+    id: `${today}:path:${state.path || 'starter'}:${nextPath}`,
     date: today,
     path: nextPath,
     rounds: 0,
@@ -868,6 +985,8 @@ export function serialize(state) {
     ascend: state.ascend,
     difficulty: state.difficulty,
     path: state.path,
+    pathsUnlocked: Boolean(state.pathsUnlocked),
+    pathsUnlockSeen: Boolean(state.pathsUnlockSeen),
     body: state.body,
     photoURL: state.photoURL || '',
     history: (state.history || []).map(publicHistory),
@@ -930,7 +1049,9 @@ export function parseProgress(data) {
       accent: Boolean(data.ascend?.accent),
     },
     difficulty: readDifficulty(data.difficulty),
-    path: workoutPath(data.path).id,
+    path: data.path ? workoutPath(data.path).id : 'starter',
+    pathsUnlocked: Boolean(data.pathsUnlocked),
+    pathsUnlockSeen: Boolean(data.pathsUnlockSeen),
     body: readBody(data.body),
     photoURL: typeof data.photoURL === 'string' ? data.photoURL : '',
     history: readHistory(data.history),

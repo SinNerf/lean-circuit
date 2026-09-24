@@ -115,9 +115,11 @@ export function UsernameGate() {
           className="mt-4 h-12 w-full border-b border-line bg-base px-2 font-body text-[14px] font-normal outline-none"
         />
         {game.storeError ? <p className="mt-2 font-body text-[14px] font-normal text-primary">{game.storeError}</p> : null}
-        <button type="submit" data-testid="save-name" disabled={!ready} className={`mt-4 ${proceed}`}>
-          Save
-        </button>
+        <div className="mt-4 flex justify-center">
+          <button type="submit" data-testid="save-name" disabled={!ready} className={proceed}>
+            Save
+          </button>
+        </div>
       </form>
     </main>
   );

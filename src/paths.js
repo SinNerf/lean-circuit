@@ -35,6 +35,19 @@ const RECRUIT = [
 
 export const WORKOUT_PATHS = [
   {
+    id: 'starter',
+    name: 'Starter Path',
+    multiplier: 0.75,
+    exercises: RECRUIT,
+    muscles: [
+      { name: 'Chest, shoulders, triceps', moves: 'Knee push-ups' },
+      { name: 'Quads and glutes', moves: 'Squats, Glute bridges, Step-back lunges' },
+      { name: 'Core', moves: 'Knee plank, Standing side bends, Lying leg raises' },
+      { name: 'Hip flexors', moves: 'Standing marches, Lying leg raises' },
+    ],
+    cardioLine: 'Standing marches are the cardio.',
+  },
+  {
     id: 'superhuman',
     name: 'Superhuman',
     multiplier: 1,
@@ -85,7 +98,7 @@ export const WORKOUT_PATHS = [
 ];
 
 export function workoutPath(id) {
-  return WORKOUT_PATHS.find((path) => path.id === id) || WORKOUT_PATHS[0];
+  return WORKOUT_PATHS.find((path) => path.id === id) || WORKOUT_PATHS.find((path) => path.id === 'starter');
 }
 
 export function exercisesFor(id) {

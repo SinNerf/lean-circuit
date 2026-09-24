@@ -60,3 +60,33 @@ input {
 .silhouette-shadow {
   filter: drop-shadow(0 0 8px #C9A155);
 }
+
+@keyframes flame-once {
+  0% {
+    transform: scale(0.86);
+    opacity: 0.45;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.flame-once {
+  animation: flame-once 700ms ease-out 1;
+}
+
+@keyframes rise-once {
+  0% {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.rise-once {
+  animation: rise-once 700ms ease-out 1;
+}

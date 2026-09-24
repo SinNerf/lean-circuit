@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { friendCode } from '../challenge.js';
 import { CORE_BADGES, currentStreak, formatClock, longestStreak, roman } from '../honors.js';
 import { BadgeEmblem } from '../icons/marks.jsx';
-import { addDays, formatDate } from '../logic.js';
+import { addDays, formatDate, PATH_UNLOCK_LINE } from '../logic.js';
 import { WORKOUT_PATHS, workoutPath } from '../paths.js';
-import { figureTone, Portrait } from '../components/Figure.jsx';
+import { figureTone, Portrait, Silhouette } from '../components/Figure.jsx';
+import { StreakFlame } from '../components/Flame.jsx';
 import { proceed } from '../components/ui.jsx';
+import { Challenge } from './Challenge.jsx';
 import { PhotoAdjust } from './PhotoAdjust.jsx';
 import { useGame } from '../state.jsx';
 
@@ -24,6 +27,7 @@ export function Profile() {
   if (game.profileView === 'history') return <History rows={game.state.history} today={game.today} />;
   if (game.profileView === 'friend-history') return <History rows={game.friend?.history || []} today={game.today} />;
   if (game.profileView === 'board') return <Board />;
+  if (game.profileView === 'challenge') return <Challenge />;
   if (game.profileView === 'friend') return <FriendSheet />;
   return <OwnSheet />;
 }
@@ -50,7 +54,9 @@ function OwnSheet() {
       badges={badges}
       featuredId={game.state.featuredBadge}
       onFeature={game.setFeatured}
-      onPath={game.openBoard}
+      onFriends={game.openBoard}
+      flamePulse={game.flamePulse}
+      badgePulse={game.badgePulse}
       onHistory={game.openHistory}
       ascend={game.ascendReady ? game.confirmAscend : null}
     />
@@ -88,7 +94,9 @@ function FriendSheet() {
         badges={badges}
         featuredId={friend.featuredBadge || ''}
         onFeature={null}
-        onPath={null}
+        onFriends={null}
+        flamePulse={false}
+        badgePulse=""
         onHistory={friend.history ? () => game.openFriendHistory() : null}
         ascend={null}
       />
@@ -99,11 +107,11 @@ function FriendSheet() {
   );
 }
 
-function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, longest, badges, featuredId, onFeature, onPath, onHistory, ascend }) {
+function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, longest, badges, featuredId, onFeature, onFriends, flamePulse, badgePulse, onHistory, ascend }) {
   const featured = badges.find((badge) => badge.id === featuredId) || null;
   return (
-    <div className="pb-8">
-      <section className="px-4 pt-4">
+    <div className="mx-auto flex w-full max-w-sm flex-col items-center pb-8 text-center">
+      <section className="flex w-full flex-col items-center px-4 pt-4">
         <Portrait src={photo} tone={tone.tone} cape={tone.cape} shadow={tone.shadow} />
         <p data-testid="hero-name" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
           {name}
@@ -121,47 +129,53 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
           </button>
         ) : null}
       </section>
-      <section className="px-4 pt-8">
-        {onPath ? (
-          <button type="button" data-testid="path-open" onClick={onPath} className="font-body text-[12px] font-normal leading-none text-muted">
-            {path.name}
-          </button>
-        ) : (
-          <p data-testid="path-open" className="font-body text-[12px] font-normal leading-none text-muted">
-            {path.name}
-          </p>
-        )}
-        <p data-testid="workouts-logged" className="mt-2 font-body text-[14px] font-normal text-primary">
+      <section className="flex w-full flex-col items-center px-4 pt-8">
+        <p data-testid="path-open" className="font-body text-[12px] font-normal leading-none text-muted">
+          {path.name}
+        </p>
+      </section>
+      <section className="flex w-full flex-col items-center px-4 pt-8">
+        <p data-testid="workouts-logged" className="font-body text-[14px] font-normal text-primary">
           {workouts} workouts logged
         </p>
-        <p data-testid="streak-current" className="font-display text-[64px] font-semibold leading-none text-primary">
-          {streak}
-        </p>
+        <div className="mt-2 flex items-center justify-center gap-2">
+          <p data-testid="streak-current" className="font-display text-[64px] font-semibold leading-none text-primary">
+            {streak}
+          </p>
+          <StreakFlame streak={streak} pulse={flamePulse} className="h-8 w-8" />
+        </div>
         <p className="mt-2 font-body text-[13px] font-medium text-muted">Current streak</p>
-        {featured ? (
-          <div data-testid="featured-badge" className="mt-4 text-gold">
-            <BadgeEmblem id={emblemId(featured.id)} earned className="h-24 w-24" />
-            <p className="mt-2 font-body text-[14px] font-normal text-primary">{featured.name}</p>
-          </div>
-        ) : null}
         <p data-testid="streak-longest" className="mt-4 font-body text-[14px] font-normal text-primary">
           Longest streak {longest}
         </p>
+        {onFriends ? (
+          <div className="mt-4 flex justify-center">
+            <button type="button" data-testid="friends-open" onClick={onFriends} className={proceed}>
+              Friends
+            </button>
+          </div>
+        ) : null}
       </section>
-      <section className="px-4 pt-8">
+      <section className="flex w-full flex-col items-center px-4 pt-8">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">Badges</h2>
-        <div data-testid="badge-shelf" className="mt-2 flex flex-wrap gap-2">
+        {featured ? (
+          <div data-testid="featured-badge" className="mt-4 text-gold">
+            <BadgeEmblem id={emblemId(featured.id)} earned pulse={badgePulse === featured.id || badgePulse === emblemId(featured.id)} className="mx-auto h-24 w-24" />
+            <p className="mt-2 font-body text-[14px] font-normal text-primary">{featured.name}</p>
+          </div>
+        ) : null}
+        <div data-testid="badge-shelf" className="mt-2 flex flex-wrap justify-center gap-2">
           {badges.map((badge) => {
             const markClass = badge.id === featuredId ? 'ring-2 ring-gold' : '';
             const body = (
               <>
-                <BadgeEmblem id={emblemId(badge.id)} earned className="h-8 w-8 text-gold" />
+                <BadgeEmblem id={emblemId(badge.id)} earned pulse={badgePulse === badge.id} className="mx-auto h-8 w-8 text-gold" />
                 <p className="mt-2 font-body text-[12px] font-normal leading-none text-primary">{badge.name}</p>
               </>
             );
             if (!onFeature) {
               return (
-                <div key={badge.id} data-testid={`badge-earned-${badge.id}`} className="w-20 text-primary">
+                <div key={badge.id} data-testid={`badge-earned-${badge.id}`} className="w-20 text-center text-primary">
                   {body}
                 </div>
               );
@@ -172,7 +186,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
                 type="button"
                 data-testid={`badge-earned-${badge.id}`}
                 onClick={() => onFeature(badge.id)}
-                className={`w-20 text-left text-primary ${markClass}`}
+                className={`w-20 text-center text-primary ${markClass}`}
               >
                 {body}
               </button>
@@ -181,7 +195,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
         </div>
       </section>
       {onHistory ? (
-        <section className="px-4 pt-8">
+        <section className="flex w-full flex-col items-center px-4 pt-8">
           <button type="button" data-testid="view-history" onClick={onHistory} className={proceed}>
             View History
           </button>
@@ -238,63 +252,142 @@ function History({ rows, today }) {
   );
 }
 
+function rankClass(rank) {
+  if (rank === 1) return 'font-display text-[28px] font-semibold leading-none text-gold';
+  if (rank <= 3) return 'font-display text-[28px] font-semibold leading-none text-primary';
+  return 'font-body text-[14px] font-normal leading-none text-muted';
+}
+
+function RowMark({ photo }) {
+  if (photo) return <img src={photo} alt="" className="h-10 w-10 rounded object-cover" />;
+  return (
+    <span data-testid="board-silhouette" className="grid h-10 w-10 place-items-center overflow-hidden rounded bg-surface">
+      <span className="origin-center scale-50">
+        <Silhouette tone="plain" cape={false} shadow={false} />
+      </span>
+    </span>
+  );
+}
+
+function BoardRow({ row, rank, pinned, selfRef }) {
+  const game = useGame();
+  const mine = row.uid === game.account?.uid;
+  return (
+    <article
+      ref={selfRef}
+      data-testid={pinned ? 'board-pin' : `board-${row.uid}`}
+      className={`border-b border-line py-4 ${pinned ? 'sticky top-0 z-10 bg-base' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          if (!mine) game.openFriend(row.uid);
+        }}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <span data-testid={pinned ? 'board-pin-rank' : `board-rank-${row.uid}`} className={`w-8 shrink-0 text-center ${rankClass(rank)}`}>
+          {rank}
+        </span>
+        <RowMark photo={row.photo} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-body text-[14px] font-normal text-primary">{row.name}</span>
+          <span className="mt-2 block font-body text-[12px] font-normal text-muted">{workoutPath(row.path).name}</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <StreakFlame streak={row.streak || 0} pulse={mine && game.flamePulse && !pinned} testId={pinned ? 'board-pin-flame' : `board-flame-${row.uid}`} className="h-4 w-4" />
+          <span data-testid={pinned ? 'board-pin-streak' : `board-streak-${row.uid}`} className="font-body text-[14px] font-normal text-primary">
+            {row.streak || 0}
+          </span>
+        </span>
+      </button>
+      {mine ? null : (
+        <div className="mt-2 flex justify-center">
+          <button type="button" data-testid={`challenge-${row.uid}`} onClick={() => game.openChallenge(row)} className={proceed}>
+            Challenge
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function Board() {
   const game = useGame();
   const [code, setCode] = useState('');
-  const activity = game.board.activity;
+  const [below, setBelow] = useState(false);
+  const selfRef = useRef(null);
+  const me = game.account?.uid;
+  const friends = game.board.rows || [];
+  const ranked = friends.length
+    ? [
+        ...friends,
+        {
+          uid: me,
+          name: game.state.name,
+          photo: game.state.photoData || '',
+          path: game.state.path,
+          level: game.sheet.level,
+          streak: currentStreak(game.state.trainingDays, game.today),
+        },
+      ].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')))
+    : [];
+  const selfRank = ranked.findIndex((row) => row.uid === me);
+
+  useEffect(() => {
+    const node = selfRef.current;
+    if (!node) return undefined;
+    const root = node.closest('main');
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const top = entry.boundingClientRect.top;
+        const limit = entry.rootBounds?.bottom ?? 0;
+        setBelow(!entry.isIntersecting && top > limit);
+      },
+      { root, threshold: 1 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ranked.length, me, selfRank]);
+
   return (
     <div className="px-4 pb-8 pt-4">
-      <div data-testid="activity-line" className="flex items-center gap-2">
-        {activity?.photo ? (
-          <img src={activity.photo} alt="" className="h-10 w-10 rounded object-cover" />
-        ) : (
-          <div className="h-10 w-10 rounded bg-surface" />
-        )}
-        <p className="font-body text-[14px] font-normal text-primary">{activity?.sentence || 'No recent training.'}</p>
-      </div>
-      <div className="mt-8">
-        {game.board.rows.map((row) => (
-          <button
-            key={row.uid}
-            type="button"
-            data-testid={`board-${row.uid}`}
-            onClick={() => game.openFriend(row.uid)}
-            className="mb-2 flex w-full items-center gap-2 border-b border-line py-2 text-left"
-          >
-            {row.photo ? <img src={row.photo} alt="" className="h-10 w-10 rounded object-cover" /> : <div className="h-10 w-10 rounded bg-surface" />}
-            <span className="min-w-0 flex-1">
-              <span className="block font-body text-[14px] font-normal text-primary">
-                {row.name} <span data-testid={`board-streak-${row.uid}`}>{row.streak || 0}</span>
-              </span>
-              <span className="mt-2 block font-body text-[12px] font-normal text-muted">
-                {row.level || 0} · {workoutPath(row.path).name}
-              </span>
-            </span>
-          </button>
-        ))}
-        {game.account && !game.board.rows.length ? <p className="font-body text-[14px] font-normal text-muted">No friends yet.</p> : null}
-      </div>
+      {ranked.length ? (
+        <div data-testid="friend-board">
+          {below && selfRank >= 0 ? <BoardRow row={ranked[selfRank]} rank={selfRank + 1} pinned /> : null}
+          {ranked.map((row, index) => (
+            <BoardRow key={row.uid} row={row} rank={index + 1} selfRef={row.uid === me ? selfRef : null} />
+          ))}
+        </div>
+      ) : (
+        <p data-testid="board-empty" className="font-body text-[14px] font-normal text-muted">
+          No friends yet.
+        </p>
+      )}
       {game.account ? (
         <form
           className="pt-8"
           onSubmit={(event) => {
             event.preventDefault();
             game.saveFriend(code);
+            setCode('');
           }}
         >
-          <p className="font-body text-[12px] font-normal text-muted">Your code</p>
-          <p data-testid="friend-code" className="mt-2 break-all font-body text-[14px] font-normal text-primary">
-            {game.account.uid}
+          <p className="text-center font-body text-[12px] font-normal text-muted">Your code</p>
+          <p data-testid="friend-code" className="mt-2 text-center font-body text-[14px] font-normal text-primary">
+            {friendCode(game.account.uid)}
           </p>
           <input
             data-testid="friend-input"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            className="mt-4 h-12 w-full border-b border-line bg-base px-2 font-body text-[14px] font-normal outline-none"
+            className="mt-4 h-12 w-full border-b border-line bg-base px-2 text-center font-body text-[14px] font-normal outline-none"
           />
-          <button type="submit" className="mt-4 font-body text-[14px] font-normal text-primary">
-            Add friend
-          </button>
+          <div className="mt-4 flex justify-center">
+            <button type="submit" data-testid="friend-add" className={proceed}>
+              Add friend
+            </button>
+          </div>
+          {game.authError ? <p className="mt-4 text-center font-body text-[14px] font-normal text-primary">{game.authError}</p> : null}
         </form>
       ) : null}
     </div>
@@ -357,17 +450,25 @@ function EditProfile() {
       <section className="pt-8">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">Path</h2>
         <div className="mt-2">
-          {WORKOUT_PATHS.map((path) => (
-            <button
-              key={path.id}
-              type="button"
-              data-testid={`path-${path.id}`}
-              onClick={() => game.setPath(path.id)}
-              className={`mt-2 block ${proceed} ${game.state.path === path.id ? 'ring-2 ring-primary' : ''}`}
-            >
-              {path.name}
-            </button>
-          ))}
+          {WORKOUT_PATHS.map((path) => {
+            const locked = !game.state.pathsUnlocked && path.id !== 'starter';
+            const active = game.state.path === path.id;
+            return (
+              <button
+                key={path.id}
+                type="button"
+                data-testid={`path-${path.id}`}
+                data-locked={locked ? 'true' : 'false'}
+                onClick={() => {
+                  if (!locked) game.setPath(path.id);
+                }}
+                className={`mt-2 block w-full text-center ${active ? proceed : 'rounded px-4 py-2 font-body text-[14px] font-normal text-primary'}`}
+              >
+                <span className="block">{path.name}</span>
+                {locked ? <span className="mt-2 block font-body text-[12px] font-normal text-muted">{PATH_UNLOCK_LINE}</span> : null}
+              </button>
+            );
+          })}
         </div>
       </section>
 

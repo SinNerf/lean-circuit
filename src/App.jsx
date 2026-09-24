@@ -13,6 +13,8 @@ import { FormSheet } from './screens/FormSheet.jsx';
 function Shell() {
   const game = useGame();
 
+  const inApp = Boolean(game.authReady && game.profileReady && game.account && game.state.name && game.state.accountUid === game.account.uid);
+
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape' && game.settingsOpen) game.closeSettings();
@@ -21,6 +23,11 @@ function Shell() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [game]);
+
+  useEffect(() => {
+    if (!inApp || !game.state.pathsUnlocked || game.state.pathsUnlockSeen) return;
+    game.notePathUnlock();
+  }, [inApp, game]);
 
   if (!game.authReady || !game.profileReady) return <BootScreen />;
   if (!game.account) return <AccountGate />;
@@ -37,6 +44,16 @@ function Shell() {
     <div className="h-dvh overflow-hidden bg-base text-primary">
       <Header />
       <main className="absolute inset-x-0 bottom-[calc(64px+var(--inset-bottom))] top-[calc(56px+var(--inset-top))] overflow-y-auto">{body}</main>
+      {game.celebration ? (
+        <div data-testid="challenge-celebration" className="pointer-events-none fixed inset-0 z-40 grid place-items-center">
+          <p className="rise-once font-display text-[28px] font-semibold text-gold">{game.celebration}</p>
+        </div>
+      ) : null}
+      {game.pathUnlock ? (
+        <div data-testid="path-unlock" className="pointer-events-none fixed inset-0 z-40 grid place-items-center">
+          <p className="rise-once font-display text-[28px] font-semibold text-gold">Path Selection Unlocked</p>
+        </div>
+      ) : null}
       {game.formId ? <FormSheet /> : null}
       <Nav />
     </div>

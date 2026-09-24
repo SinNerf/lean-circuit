@@ -1,13 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { TRIALS, CLASS_TRIALS } from './catalog.js';
 import { exercisesFor, workoutPath } from './paths.js';
-import { addFriend, cloudEnabled, loadBoard, loadFriend, pullBody, pullProfile, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount } from './cloud.js';
+import { draftMatch, flameCrossed, sameScore, scoredMatch, shouldResolve } from './challenge.js';
+import { addFriend, banChallenge, cloudEnabled, createChallenge, ensureCode, finishChallenge, loadBoard, loadFriend, pullBody, pullProfile, pushChallengeScore, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount, watchChallenges } from './cloud.js';
 import { isProfilePhoto } from './photo.js';
 import { beep, buzz } from './audio.js';
 import {
   afterAction,
   ascend,
   canAscend,
+  currentStreak,
   noteRest,
   openRound,
   recordRound,
@@ -32,6 +34,8 @@ import {
   rateCell,
   creditFor,
   pathChangeEntry,
+  scaleStats,
+  settlePaths,
   readBody,
   readDifficulty,
   readHistory,
@@ -58,6 +62,7 @@ function loadStats() {
   const saved = get(KEYS.stats, null);
   if (!saved) return empty;
   return {
+    point: saved.point,
     tier: { ...empty.tier, ...saved.tier },
     lifetime: { ...empty.lifetime, ...saved.lifetime },
     exerciseLifetime: saved.exerciseLifetime || {},
@@ -68,7 +73,7 @@ function loadStats() {
 function loadState() {
   const base = freshState();
   const ramp = get(KEYS.ramp, base.ramp);
-  return {
+  return settlePaths(scaleStats({
     ...base,
     name: get(KEYS.name, null),
     device: get(KEYS.device, null),
@@ -99,14 +104,16 @@ function loadState() {
     weekly: get(KEYS.weekly, null),
     ascend: get(KEYS.ascend, base.ascend) || base.ascend,
     difficulty: readDifficulty(get(KEYS.difficulty, base.difficulty)),
-    path: workoutPath(get(KEYS.path, 'superhuman')).id,
+    path: workoutPath(get(KEYS.path, 'starter')).id,
+    pathsUnlocked: Boolean(get(KEYS.pathsOpen, false)),
+    pathsUnlockSeen: Boolean(get(KEYS.pathsSeen, false)),
     body: readBody(get(KEYS.body, null)),
     photoData: get(KEYS.photo, null),
     photoURL: get(KEYS.photoURL, '') || '',
     history: readHistory(get(KEYS.history, [])),
     featuredBadge: get(KEYS.featured, '') || '',
     accountUid: get(KEYS.account, null) || null,
-  };
+  }));
 }
 
 function persist(state) {
@@ -134,7 +141,9 @@ function persist(state) {
   set(KEYS.weekly, state.weekly);
   set(KEYS.ascend, state.ascend);
   set(KEYS.difficulty, state.difficulty);
-  set(KEYS.path, state.path || 'superhuman');
+  set(KEYS.path, state.path || 'starter');
+  set(KEYS.pathsOpen, Boolean(state.pathsUnlocked));
+  set(KEYS.pathsSeen, Boolean(state.pathsUnlockSeen));
   set(KEYS.body, state.body);
   if (state.photoData) set(KEYS.photo, state.photoData);
   else remove(KEYS.photo);
@@ -168,7 +177,15 @@ export function GameProvider({ children }) {
   const [importError, setImportError] = useState('');
   const [profileView, setProfileView] = useState('self');
   const [friend, setFriend] = useState(null);
-  const [board, setBoard] = useState({ rows: [], activity: null });
+  const [board, setBoard] = useState({ rows: [] });
+  const [challenges, setChallenges] = useState([]);
+  const [challengeWith, setChallengeWith] = useState(null);
+  const [challengeBusy, setChallengeBusy] = useState(false);
+  const [challengeError, setChallengeError] = useState('');
+  const [flamePulse, setFlamePulse] = useState(false);
+  const [badgePulse, setBadgePulse] = useState('');
+  const [pathUnlock, setPathUnlock] = useState(false);
+  const [celebration, setCelebration] = useState(null);
   const [account, setAccount] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [resolvedUid, setResolvedUid] = useState(null);
@@ -176,6 +193,10 @@ export function GameProvider({ children }) {
   const [authError, setAuthError] = useState('');
   const boot = useRef(false);
   const prev = useRef(null);
+  const streakPrev = useRef(null);
+  const seenDone = useRef(null);
+  const pathNoted = useRef(false);
+  const badgePrev = useRef(null);
   const stateRef = useRef(state);
   const timerRef = useRef(null);
   const restRef = useRef(null);
@@ -218,12 +239,90 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     if (!account?.uid || resolvedUid !== account.uid) return undefined;
+    ensureCode(account.uid).catch(() => {});
+    return undefined;
+  }, [account, resolvedUid]);
+
+  useEffect(() => {
+    if (!account?.uid || resolvedUid !== account.uid) return undefined;
     const uid = account.uid;
     const handle = window.setTimeout(() => {
       pushCloud(uid, stateRef.current, levelInfo(stateRef.current.stats.tier, speedTier(stateRef.current.speed)), today).catch(() => {});
     }, 400);
     return () => window.clearTimeout(handle);
   }, [account, resolvedUid, state, today]);
+
+  useEffect(() => {
+    if (!account?.uid) return undefined;
+    return watchChallenges(account.uid, setChallenges);
+  }, [account]);
+
+  useEffect(() => {
+    const streakNow = currentStreak(state.trainingDays, today);
+    if (streakPrev.current == null) {
+      streakPrev.current = streakNow;
+      return undefined;
+    }
+    const previous = streakPrev.current;
+    streakPrev.current = streakNow;
+    if (!flameCrossed(previous, streakNow)) return undefined;
+    setFlamePulse(true);
+    const id = window.setTimeout(() => setFlamePulse(false), 700);
+    return () => window.clearTimeout(id);
+  }, [state.trainingDays, today]);
+
+  useEffect(() => {
+    const ids = Object.keys(state.badges || {});
+    if (badgePrev.current == null) {
+      badgePrev.current = new Set(ids);
+      return undefined;
+    }
+    const fresh = ids.filter((id) => !badgePrev.current.has(id));
+    badgePrev.current = new Set(ids);
+    if (!fresh.length) return undefined;
+    setBadgePulse(fresh[0]);
+    const id = window.setTimeout(() => setBadgePulse(''), 700);
+    return () => window.clearTimeout(id);
+  }, [state.badges]);
+
+  useEffect(() => {
+    if (!account?.uid) return undefined;
+    if (!seenDone.current) {
+      seenDone.current = new Set(challenges.filter((row) => row.status === 'done').map((row) => row.id));
+      return undefined;
+    }
+    for (const row of challenges) {
+      if (row.status !== 'done' || seenDone.current.has(row.id)) continue;
+      seenDone.current.add(row.id);
+      if (row.winner && row.winner === account.uid) {
+        const name = row.winner === row.from ? row.fromName : row.toName;
+        setCelebration(name || 'Won');
+        const id = window.setTimeout(() => setCelebration(null), 900);
+        return () => window.clearTimeout(id);
+      }
+    }
+    return undefined;
+  }, [challenges, account]);
+
+  useEffect(() => {
+    if (!account?.uid) return undefined;
+    let dead = false;
+    const uid = account.uid;
+    for (const challenge of challenges) {
+      if (challenge.status !== 'live') continue;
+      if (challenge.from !== uid && challenge.to !== uid) continue;
+      const remote = challenge.scores?.[uid] || { done: [], credit: 0 };
+      const next = scoredMatch(stateRef.current, today, challenge.match, remote.done);
+      if (!sameScore(remote, next)) {
+        pushChallengeScore(challenge.id, uid, next).catch(() => {});
+      }
+      const merged = { ...challenge, scores: { ...(challenge.scores || {}), [uid]: next } };
+      if (!dead && shouldResolve(merged, today)) finishChallenge(challenge.id, today).catch(() => {});
+    }
+    return () => {
+      dead = true;
+    };
+  }, [account, challenges, state.checks, state.path, state.body, today]);
 
   useEffect(() => {
     if (!account?.uid) return undefined;
@@ -342,11 +441,20 @@ export function GameProvider({ children }) {
       if (id !== 'profile') {
         setProfileView('self');
         setFriend(null);
+        setChallengeWith(null);
       }
     },
     profileView,
     friend,
     board,
+    challenges,
+    challengeWith,
+    challengeBusy,
+    challengeError,
+    flamePulse,
+    badgePulse,
+    pathUnlock,
+    celebration,
     account,
     authReady,
     profileReady: !account || resolvedUid === account.uid,
@@ -599,12 +707,14 @@ export function GameProvider({ children }) {
         skills: { ...pendingImport.skills },
         speed: speedTier(pendingImport.speed),
       };
-      setState((s) => ({
+      setState((s) => settlePaths(scaleStats({
         ...s,
         ...pendingImport,
         name: s.name,
         device: s.device,
-      }));
+        photoData: s.photoData,
+        accountUid: s.accountUid,
+      })));
       setPendingImport(null);
       setLevelUp(null);
       setToasts([]);
@@ -620,15 +730,17 @@ export function GameProvider({ children }) {
       setProfileView('history');
     },
     async openBoard() {
+      setChallengeError('');
       setProfileView('board');
       if (!account?.uid) {
-        setBoard({ rows: [], activity: null });
+        setBoard({ rows: [] });
         return;
       }
       try {
+        await ensureCode(account.uid);
         setBoard(await loadBoard(account.uid));
       } catch {
-        setBoard({ rows: [], activity: null });
+        setBoard({ rows: [] });
       }
     },
     async openFriend(uid) {
@@ -650,14 +762,84 @@ export function GameProvider({ children }) {
         setFriend(null);
         return;
       }
+      if (profileView === 'challenge') {
+        setProfileView('board');
+        setChallengeWith(null);
+        setChallengeError('');
+        return;
+      }
       setProfileView('self');
       setFriend(null);
+      setChallengeWith(null);
+    },
+    openChallenge(row) {
+      if (!row?.uid || row.uid === account?.uid) return;
+      setChallengeError('');
+      setChallengeWith(row);
+      setProfileView('challenge');
+    },
+    async confirmDraft(picked) {
+      const friendRow = challengeWith;
+      const drafted = draftMatch(exercisesFor(stateRef.current.path), picked);
+      if (!drafted || !account?.uid || !friendRow?.uid) return;
+      setChallengeBusy(true);
+      setChallengeError('');
+      try {
+        await createChallenge({
+          from: account.uid,
+          to: friendRow.uid,
+          fromName: stateRef.current.name || '',
+          toName: friendRow.name || '',
+          path: workoutPath(stateRef.current.path).id,
+          drafted,
+          banned: null,
+          match: [],
+          status: 'ban',
+          day: today,
+          created: Date.now(),
+          scores: {
+            [account.uid]: { done: [], credit: 0 },
+            [friendRow.uid]: { done: [], credit: 0 },
+          },
+          winner: null,
+        });
+      } catch {
+        setChallengeError('The challenge did not send.');
+      }
+      setChallengeBusy(false);
+    },
+    async confirmBan(challenge, banned) {
+      if (!challenge?.id) return;
+      setChallengeBusy(true);
+      setChallengeError('');
+      try {
+        await banChallenge(challenge.id, challenge.drafted, banned);
+      } catch {
+        setChallengeError('The ban did not send.');
+      }
+      setChallengeBusy(false);
+    },
+    async toggleChallenge(challenge, exerciseId) {
+      if (!account?.uid || !challenge?.id || challenge.status === 'done') return;
+      const remote = challenge.scores?.[account.uid] || { done: [], credit: 0 };
+      const marks = new Set(remote.done || []);
+      if (marks.has(exerciseId)) marks.delete(exerciseId);
+      else marks.add(exerciseId);
+      const next = scoredMatch(stateRef.current, today, challenge.match, [...marks]);
+      try {
+        await pushChallengeScore(challenge.id, account.uid, next);
+        const merged = { ...challenge, scores: { ...(challenge.scores || {}), [account.uid]: next } };
+        if (shouldResolve(merged, today)) await finishChallenge(challenge.id, today);
+      } catch {
+        setChallengeError('The match did not update.');
+      }
     },
     openFriendHistory() {
       setProfileView('friend-history');
     },
     setPath(id) {
       setState((s) => {
+        if (!s.pathsUnlocked && id !== 'starter') return s;
         if (workoutPath(s.path).id === id) return s;
         const entry = pathChangeEntry(s, today, id);
         const history = [...(s.history || [])];
@@ -666,6 +848,13 @@ export function GameProvider({ children }) {
         else history.push(entry);
         return afterAction({ ...s, path: id, history }, today);
       });
+    },
+    notePathUnlock() {
+      if (pathNoted.current) return;
+      pathNoted.current = true;
+      setPathUnlock(true);
+      setState((s) => (s.pathsUnlockSeen ? s : { ...s, pathsUnlockSeen: true }));
+      window.setTimeout(() => setPathUnlock(false), 900);
     },
     setBody(next) {
       setState((s) => afterAction({ ...s, body: { heightCm: next.heightCm ?? null, weightKg: next.weightKg ?? null } }, today));
@@ -754,7 +943,8 @@ function applyAccountProfile(s, uid, card) {
   const name = remoteName ? remoteName : s.name && same ? s.name : null;
   const photo = isProfilePhoto(card?.photo) ? card.photo : same ? s.photoData : null;
   const featured = (card?.featuredBadge || (same ? s.featuredBadge : '')) || '';
-  const path = card?.path ? workoutPath(card.path).id : s.path;
+  let path = card?.path ? workoutPath(card.path).id : s.path;
+  if (!s.pathsUnlocked) path = 'starter';
   return {
     ...s,
     name,

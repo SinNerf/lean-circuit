@@ -28,5 +28,27 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(uid);
       }
     }
+    match /challenges/{challengeId} {
+      function party() {
+        return signedIn() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);
+      }
+      function clean(data) {
+        return !data.keys().hasAny(['height', 'heightCm', 'weight', 'weightKg', 'body']);
+      }
+      allow read: if party();
+      allow create: if signedIn()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.status == 'ban'
+        && request.resource.data.banned == null
+        && request.resource.data.drafted.size() == 3
+        && clean(request.resource.data);
+      allow update: if party()
+        && request.resource.data.from == resource.data.from
+        && request.resource.data.to == resource.data.to
+        && request.resource.data.drafted == resource.data.drafted
+        && request.resource.data.path == resource.data.path
+        && request.resource.data.day == resource.data.day
+        && clean(request.resource.data);
+    }
   }
 }

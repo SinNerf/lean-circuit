@@ -7,7 +7,7 @@ import { useGame } from '../state.jsx';
 const MARKS = [
   ['clean', 'Felt clean'],
   ['slipped', 'Form slipped'],
-  ['modify', 'Had to modify'],
+  ['modify', 'Quick Fix'],
   ['easier', 'Easier version'],
 ];
 

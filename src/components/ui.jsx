@@ -39,7 +39,7 @@ export function Header() {
       </button>
     );
   } else if (game.tab === 'profile' && game.profileView !== 'self') {
-    title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'board' ? 'Leaderboard' : game.friend?.name || 'Profile';
+    title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'board' ? 'Friends' : game.profileView === 'challenge' ? 'Challenge' : game.friend?.name || 'Profile';
     icon = (
       <button type="button" aria-label="Close" data-testid="close-profile" onClick={game.closeProfilePane} className="grid h-10 w-10 place-items-center text-primary">
         <X size={24} />

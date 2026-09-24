@@ -1,3 +1,5 @@
+import { CraftedMark } from '../components/CraftedMark.jsx';
+
 function Line({ className, children }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -67,22 +69,18 @@ export function MedalMark({ className }) {
   );
 }
 
-const EMBLEMS = {
-  'first-workout': 'M27 16a11 11 0 1 1-22 0 11 11 0 1 1 22 0z',
-  'streak-7': 'M6 25 16 6l10 19h-6l-4-8-4 8z',
-  comeback: 'M10 7h10c6 0 6 10 0 10h-6v-4l-7 6 7 6v-4h6c8 0 8-18 0-18H10z',
-  'unbroken-circuit': 'M16 4 27 10.5 27 21.5 16 28 5 21.5 5 10.5z',
-  'burpees-100': 'M16 3 20 12 29 16 20 20 16 29 12 20 3 16 12 12z',
-  'full-month': 'M7 7h14l5 5v14H7z',
-  weekly: 'M9 4h6v4h10l-4 5 4 5H15v10H9z',
+const PICTURES = {
+  'first-workout': 'medal',
+  'streak-7': 'celebration',
+  comeback: 'return',
+  'unbroken-circuit': 'shield',
+  'burpees-100': 'fist',
+  'full-month': 'calendar',
+  weekly: 'sunrise',
 };
 
-export function BadgeEmblem({ id, earned, className }) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true" fill={earned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={earned ? 0 : 1.6} strokeLinejoin="round">
-      <path d={EMBLEMS[id] || EMBLEMS.weekly} />
-    </svg>
-  );
+export function BadgeEmblem({ id, earned, className, pulse = false }) {
+  return <CraftedMark name={PICTURES[id] || PICTURES.weekly} pulse={pulse && earned} className={`${className || ''} ${earned ? '' : 'opacity-40'}`} />;
 }
 
 const MARKS = { sword: Sword, lightning: Lightning, shield: Shield, coil: Coil, flame: Flame, swift: Swift };

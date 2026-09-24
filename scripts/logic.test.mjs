@@ -24,8 +24,11 @@ import {
   freshState,
   levelInfo,
   parseProgress,
+  pathSelectionOpen,
   prescription,
   rateCell,
+  scaleStats,
+  settlePaths,
   recoveryDue,
   repeatWeek,
   pauseSession,
@@ -40,6 +43,17 @@ import {
   visualTier,
   weekState,
 } from '../src/logic.js';
+import { exercisesFor } from '../src/paths.js';
+import {
+  banOne,
+  draftMatch,
+  exerciseCredit,
+  flameCrossed,
+  flameStep,
+  friendCode,
+  shouldResolve,
+  winnerOf,
+} from '../src/challenge.js';
 import { shouldRegisterServiceWorker } from '../src/platform.js';
 
 const burpees = EXERCISES[0];
@@ -47,11 +61,12 @@ const pushUps = EXERCISES[1];
 
 test('visual tier, belt, and empty bar on a multiple of 10', () => {
   assert.equal(visualTier(0), 0);
-  assert.equal(visualTier(1), 1);
-  assert.equal(visualTier(3), 2);
-  assert.equal(visualTier(7), 3);
-  assert.equal(visualTier(8), 3);
-  assert.equal(visualTier(1023), 10);
+  assert.equal(visualTier(0.2), 1);
+  assert.equal(visualTier(0.6), 2);
+  assert.equal(visualTier(1.4), 3);
+  assert.equal(visualTier(1.6), 3);
+  assert.equal(visualTier(204.6), 10);
+  assert.equal(visualTier(9), 5);
   assert.equal(barSegments(0), 0);
   assert.equal(barSegments(4), 4);
   assert.equal(barSegments(10), 0);
@@ -122,7 +137,7 @@ test('daily cap, uncheck refund, reset keeps credit, and a second exercise still
 });
 
 test('level is the floor of the average of six visual tiers', () => {
-  const info = levelInfo({ strength: 16, power: 28, endurance: 26, core: 22, cardio: 36 }, 0);
+  const info = levelInfo({ strength: 3.2, power: 5.6, endurance: 5.2, core: 4.4, cardio: 7.2 }, 0);
   assert.equal(info.visual.strength, 4);
   assert.equal(info.visual.cardio, 5);
   assert.equal(info.visual.speed, 0);
@@ -485,14 +500,185 @@ test('path and bodyweight multipliers stack on loaded moves only', () => {
   assert.ok(Math.abs(bodyweightFactor(50) - 1) < 1e-9);
   assert.equal(bodyweightFactor(200), 1.3);
   assert.ok(bodyweightFactor(10) >= 0.85);
-  assert.equal(creditFor(15, pushUps, 'superhuman', null), 15);
-  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', null) - 18.75) < 1e-9);
-  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', 100) - 18.75 * 1.15) < 1e-9);
+  assert.equal(creditFor(15, pushUps, 'superhuman', null), 3);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', null) - 3.75) < 1e-9);
+  assert.ok(Math.abs(creditFor(15, pushUps, 'warrior', 100) - 3.75 * 1.15) < 1e-9);
   const jump = EXERCISES.find((exercise) => exercise.id === 'jump-squats');
-  assert.equal(creditFor(20, jump, 'warrior', 100), 25);
+  assert.equal(creditFor(20, jump, 'warrior', 100), 5);
   const shared = { id: 'day', date: '2026-09-22', path: 'warrior', rounds: 1, gains: { strength: 1 }, modified: [], pathChange: null };
   assert.equal('heightCm' in shared, false);
   assert.equal('weightKg' in shared, false);
+});
+
+test('streak flame steps and a draft-and-ban match', () => {
+  assert.equal(flameStep(0), 'none');
+  assert.equal(flameStep(1), 'outline');
+  assert.equal(flameStep(6), 'outline');
+  assert.equal(flameStep(7), 'bronze');
+  assert.equal(flameStep(29), 'bronze');
+  assert.equal(flameStep(30), 'gold');
+  assert.equal(flameCrossed(6, 7), true);
+  assert.equal(flameCrossed(7, 10), false);
+  assert.equal(flameCrossed(29, 30), true);
+  assert.equal(flameCrossed(12, 0), false);
+  const pool = exercisesFor('superhuman');
+  const drafted = draftMatch(pool, [pool[0].id, pool[1].id, pool[2].id]);
+  assert.deepEqual(drafted, [pool[0].id, pool[1].id, pool[2].id]);
+  assert.equal(draftMatch(pool, [pool[0].id, pool[0].id, pool[1].id]), null);
+  const match = banOne(drafted, pool[1].id);
+  assert.deepEqual(match, [pool[0].id, pool[2].id]);
+  const challenge = {
+    from: 'a',
+    to: 'b',
+    status: 'live',
+    day: '2026-09-23',
+    match,
+    scores: { a: { done: match, credit: 10 }, b: { done: match, credit: 12 } },
+  };
+  assert.equal(winnerOf(challenge), 'b');
+  challenge.scores.b.credit = 10;
+  assert.equal(winnerOf(challenge), 'tie');
+  assert.equal(shouldResolve(challenge, '2026-09-23'), true);
+  assert.equal(shouldResolve({ ...challenge, status: 'ban' }, '2026-09-24'), false);
+  const code = friendCode('player-one');
+  assert.equal(code, friendCode('player-one'));
+  assert.equal(code.length, 6);
+  const warrior = freshState();
+  warrior.path = 'warrior';
+  const recruit = freshState();
+  recruit.path = 'recruit';
+  assert.ok(exerciseCredit(warrior, '2026-09-23', pool[0]) > exerciseCredit(recruit, '2026-09-23', pool[0]));
+  assert.equal(exercisesFor('starter')[0].id, 'knee-push-ups');
+  assert.equal(exercisesFor('starter').length, exercisesFor('recruit').length);
+});
+
+function gateDay(date, kind) {
+  const ratings = {};
+  if (kind === 'clean') {
+    ratings.a = { rating: 'clean', easier: false };
+    ratings.b = { rating: 'clean', easier: false };
+  } else if (kind === 'fix') {
+    ratings.a = { rating: 'modify', easier: false };
+  } else if (kind === 'two') {
+    ratings.a = { rating: 'modify', easier: false };
+    ratings.b = { rating: 'easier', easier: true };
+  } else if (kind === 'clean-fix') {
+    ratings.a = { rating: 'clean', easier: false };
+    ratings.b = { rating: 'clean', easier: false };
+    ratings.c = { rating: 'modify', easier: false };
+  }
+  return { date, kind, ratings: kind === 'quiet' ? null : ratings };
+}
+
+function gateState(days) {
+  const history = days.map((day) => ({
+    id: day.date,
+    date: day.date,
+    path: 'superhuman',
+    rounds: 4,
+    durationMs: null,
+    gains: { strength: 1, power: 0, endurance: 0, core: 0, cardio: 0 },
+    modified: [],
+    pathChange: null,
+  }));
+  const ratings = {};
+  for (const day of days) {
+    if (day.ratings) ratings[day.date] = day.ratings;
+  }
+  return {
+    ...freshState(),
+    path: 'superhuman',
+    pathsUnlocked: false,
+    history,
+    difficulty: { ...freshState().difficulty, ratings },
+  };
+}
+
+test('starter path stays locked until five clean-enough circuits, and history stays', () => {
+  assert.equal(freshState().path, 'starter');
+  assert.equal(freshState().pathsUnlocked, false);
+  assert.equal(freshState().stats.point, 0.2);
+  const dates = ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'];
+  const five = gateState(dates.map((date) => gateDay(date, 'clean')));
+  assert.equal(pathSelectionOpen(five), true);
+  const opened = settlePaths(five);
+  assert.equal(opened.pathsUnlocked, true);
+  assert.equal(opened.path, 'superhuman');
+  assert.equal(opened.history.length, 5);
+  const short = gateState(dates.slice(0, 4).map((date) => gateDay(date, 'clean')));
+  assert.equal(pathSelectionOpen(short), false);
+  const forced = settlePaths(short);
+  assert.equal(forced.path, 'starter');
+  assert.equal(forced.history.length, 4);
+  const mixed = gateState([
+    gateDay(dates[0], 'clean'),
+    gateDay(dates[1], 'clean'),
+    gateDay(dates[2], 'clean'),
+    gateDay(dates[3], 'quiet'),
+    gateDay(dates[4], 'fix'),
+  ]);
+  assert.equal(pathSelectionOpen(mixed), true);
+  const heavy = gateState([
+    gateDay(dates[0], 'clean'),
+    gateDay(dates[1], 'clean'),
+    gateDay(dates[2], 'clean'),
+    gateDay(dates[3], 'quiet'),
+    gateDay(dates[4], 'two'),
+  ]);
+  assert.equal(pathSelectionOpen(heavy), false);
+  const thin = gateState(dates.map((date, index) => gateDay(date, index < 2 ? 'clean' : 'quiet')));
+  assert.equal(pathSelectionOpen(thin), false);
+  const held = settlePaths({ ...freshState(), path: 'monk', pathsUnlocked: true, history: [] });
+  assert.equal(held.path, 'monk');
+  assert.equal(held.pathsUnlocked, true);
+});
+
+test('saved counters divide by 5 once and a starter week stays a small strength total', () => {
+  let state = freshState();
+  delete state.stats.point;
+  state.stats.tier.strength = 45;
+  state.stats.lifetime.strength = 180;
+  state.stats.exerciseLifetime.burpees = 100;
+  state.volumeByDay = { '2026-09-22': { 'push-ups': 50 } };
+  state.history = [
+    {
+      id: '2026-09-22',
+      date: '2026-09-22',
+      path: 'superhuman',
+      rounds: 4,
+      durationMs: null,
+      gains: { strength: 45, power: 0, endurance: 0, core: 0, cardio: 0 },
+      modified: [],
+      pathChange: null,
+    },
+  ];
+  state.checks.cells['0-0'] = { exerciseId: 'burpees', credit: 10, target: 10, tierGranted: true, parts: { strength: 10 } };
+  state.difficulty.targets['push-ups'] = 15;
+  const once = scaleStats(state);
+  assert.equal(once.stats.point, 0.2);
+  assert.equal(once.stats.tier.strength, 9);
+  assert.equal(once.stats.lifetime.strength, 36);
+  assert.equal(once.stats.exerciseLifetime.burpees, 20);
+  assert.equal(once.volumeByDay['2026-09-22']['push-ups'], 10);
+  assert.equal(once.history[0].gains.strength, 9);
+  assert.equal(once.checks.cells['0-0'].credit, 2);
+  assert.equal(once.difficulty.targets['push-ups'], 15);
+  const twice = scaleStats(once);
+  assert.equal(twice, once);
+  assert.equal(twice.stats.tier.strength, 9);
+  const knee = exercisesFor('starter')[0];
+  const bridge = exercisesFor('starter').find((exercise) => exercise.id === 'glute-bridges');
+  const prog = freshState().progression;
+  assert.equal(prescription(knee, prog, 0.55).credit, 7);
+  assert.equal(prescription(bridge, prog, 0.55).credit, 8);
+  const kneeSet = creditFor(7, knee, 'starter', null);
+  const bridgeSet = creditFor(8, bridge, 'starter', null);
+  assert.ok(Math.abs(kneeSet - 1.05) < 1e-9);
+  assert.ok(Math.abs(bridgeSet - 1.2) < 1e-9);
+  const weekTier = 4 * (kneeSet + bridgeSet);
+  assert.ok(Math.abs(weekTier - 9) < 1e-9);
+  assert.equal(visualTier(weekTier), 5);
+  assert.equal(visualTier(4 * 4 * (kneeSet + bridgeSet)), 7);
 });
 
 test('service worker stays off inside the native webview', () => {

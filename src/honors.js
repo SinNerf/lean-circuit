@@ -9,7 +9,9 @@ import {
   applyWeeklyTargets,
   rollDay,
   roundCount,
+  settlePaths,
   speedTier,
+  STAT_POINT,
   visualTier,
 } from './logic.js';
 
@@ -191,6 +193,7 @@ export function weeklyProgress(state) {
   const weekly = state.weekly;
   const spec = weeklySpec(weekly);
   if (!weekly || !spec) return null;
+  const goal = spec.kind === 'reps' ? spec.target * STAT_POINT : spec.target;
   let current = 0;
   if (spec.kind === 'reps') current = weekVolume(state, weekly.weekStart, spec.exercise);
   if (spec.kind === 'days') current = (state.trainingDays || []).filter((day) => inWeek(day, weekly.weekStart)).length;
@@ -202,8 +205,9 @@ export function weeklyProgress(state) {
   }
   return {
     ...spec,
-    current: Math.min(spec.target, current),
-    done: current >= spec.target || Boolean(weekly.completed),
+    target: goal,
+    current: Math.round(Math.min(goal, current) * 100) / 100,
+    done: current >= goal || Boolean(weekly.completed),
   };
 }
 
@@ -272,7 +276,7 @@ export function afterAction(state, today, rng = Math.random) {
   if (longestStreak(next.trainingDays) >= 7) badges = award(badges, 'streak-7', today);
   if (hasComeback(next.trainingDays)) badges = award(badges, 'comeback', today);
   if (unbrokenReady(next.checks)) badges = award(badges, 'unbroken-circuit', today);
-  if ((next.stats?.exerciseLifetime?.burpees || 0) >= 100) badges = award(badges, 'burpees-100', today);
+  if ((next.stats?.exerciseLifetime?.burpees || 0) >= 100 * STAT_POINT) badges = award(badges, 'burpees-100', today);
   if (new Set(next.trainingDays || []).size >= 30) badges = award(badges, 'full-month', today);
 
   let weekly = next.weekly;
@@ -287,8 +291,11 @@ export function afterAction(state, today, rng = Math.random) {
   }
 
   const titleRank = earnedRank({ ...next, badges });
+  const settled = settlePaths({ ...next, badges, weekly, weeklyBadges, titleRank });
   if (
     next === state &&
+    settled.path === state.path &&
+    Boolean(settled.pathsUnlocked) === Boolean(state.pathsUnlocked) &&
     badges === (state.badges || {}) &&
     weekly === state.weekly &&
     weeklyBadges === (state.weeklyBadges || []) &&
@@ -297,7 +304,7 @@ export function afterAction(state, today, rng = Math.random) {
   ) {
     return state;
   }
-  return { ...next, badges, weekly, weeklyBadges, titleRank };
+  return settled;
 }
 
 export function sheetVisual(state) {
