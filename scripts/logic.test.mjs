@@ -16,6 +16,7 @@ import {
 import {
   applyCell,
   bodyweightFactor,
+  compareStanding,
   creditFor,
   applyWeeklyTargets,
   barSegments,
@@ -37,6 +38,8 @@ import {
   resumeSession,
   scaleForWeek,
   serialize,
+  statCredit,
+  statVisualTier,
   skipWeek,
   speedTier,
   suggestionFor,
@@ -720,6 +723,23 @@ test('saved counters divide by 4 once and the older point flag is left at 0.2', 
   const kept = scaleStats(once);
   assert.equal(kept, once);
   assert.equal(kept.stats.tier.strength, 2.25);
+});
+
+test('leaderboard standing uses visual tier of raw stats, then raw credit', () => {
+  const zeros = { strength: 0, power: 0, endurance: 0, core: 0, cardio: 0 };
+  assert.equal(statCredit({ ...zeros, strength: 0.15, power: 0.15 }), 0.3);
+  assert.equal(statVisualTier({ ...zeros, strength: 0.15, power: 0.15 }), visualTier(0.3));
+  const ahead = { name: 'Ahead', statTier: 3, statCredit: 1.2, level: 1, wins: 0, challengeCredit: 0 };
+  const behind = { name: 'Behind', statTier: 3, statCredit: 0.4, level: 9, wins: 4, challengeCredit: 80 };
+  const listed = [behind, ahead].sort(compareStanding);
+  assert.equal(listed[0].name, 'Ahead');
+  assert.equal(listed[0].level, 1);
+  const same = [behind, ahead].sort(compareStanding);
+  behind.wins = 0;
+  behind.challengeCredit = 0;
+  ahead.wins = 12;
+  ahead.challengeCredit = 400;
+  assert.deepEqual([behind, ahead].sort(compareStanding).map((row) => row.name), same.map((row) => row.name));
 });
 
 test('service worker stays off inside the native webview', () => {

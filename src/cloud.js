@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import firebaseConfig from 'virtual:firebase-config';
 import { banOne, friendCode, shouldResolve, winnerOf } from './challenge.js';
+import { statCredit, statVisualTier } from './logic.js';
 import { titleName } from './honors.js';
 import { currentStreak, longestStreak } from './honors.js';
 import { publicHistory } from './logic.js';
@@ -107,6 +108,8 @@ export function publicCard(state, sheet, today) {
     name: state.name || '',
     title: titleName(state.titleRank),
     level: sheet.level,
+    statTier: statVisualTier(state.stats?.tier),
+    statCredit: statCredit(state.stats?.tier),
     ascension: state.ascend?.count || 0,
     path: workoutPath(state.path).id,
     photo: profilePhoto(state.photoData),
@@ -178,6 +181,8 @@ function publicFriend(id, data) {
     name: card.name || '',
     title: card.title || '',
     level: card.level || 0,
+    statTier: card.statTier || 0,
+    statCredit: card.statCredit || 0,
     ascension: card.ascension || 0,
     path: card.path || '',
     photo: card.photo || '',
@@ -225,7 +230,7 @@ export async function loadBoard(uid) {
     if (!profile.exists()) continue;
     rows.push(publicFriend(friend.id, profile.data()));
   }
-  rows.sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name).localeCompare(String(b.name)));
+  rows.sort((a, b) => (b.statTier || 0) - (a.statTier || 0) || (b.statCredit || 0) - (a.statCredit || 0) || String(a.name).localeCompare(String(b.name)));
   return { rows };
 }
 

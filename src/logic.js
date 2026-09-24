@@ -411,6 +411,20 @@ export function resetRounds(state, today) {
   };
 }
 
+export function statCredit(tierStats) {
+  let total = 0;
+  for (const id of STAT_IDS) total += Number(tierStats?.[id]) || 0;
+  return total;
+}
+
+export function statVisualTier(tierStats) {
+  return visualTier(statCredit(tierStats));
+}
+
+export function compareStanding(a, b) {
+  return (b.statTier || 0) - (a.statTier || 0) || (b.statCredit || 0) - (a.statCredit || 0) || String(a.name || '').localeCompare(String(b.name || ''));
+}
+
 export function levelInfo(tierStats, speedVisual = 0) {
   const visual = {};
   let sum = 0;

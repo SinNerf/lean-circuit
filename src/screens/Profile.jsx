@@ -3,7 +3,7 @@ import { CLASSES, PATHS } from '../catalog.js';
 import { friendCode } from '../challenge.js';
 import { CORE_BADGES, currentStreak, formatClock, longestStreak, roman } from '../honors.js';
 import { BadgeEmblem } from '../icons/marks.jsx';
-import { addDays, formatDate, PATH_UNLOCK_LINE } from '../logic.js';
+import { addDays, compareStanding, formatDate, PATH_UNLOCK_LINE, statCredit, statVisualTier } from '../logic.js';
 import { WORKOUT_PATHS, workoutPath } from '../paths.js';
 import { figureTone, Portrait, Silhouette } from '../components/Figure.jsx';
 import { StreakFlame } from '../components/Flame.jsx';
@@ -330,6 +330,9 @@ function BoardRow({ row, rank, pinned, selfRef }) {
         <RowMark photo={row.photo} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-body text-[14px] font-normal text-primary">{row.name}</span>
+          <span data-testid={pinned ? 'board-pin-level' : `board-level-${row.uid}`} className="mt-2 block font-body text-[14px] font-normal text-primary">
+            Level {row.level || 0}
+          </span>
           <span className="mt-2 block font-body text-[12px] font-normal text-muted">{workoutPath(row.path).name}</span>
         </span>
         <span className="flex items-center gap-1">
@@ -365,13 +368,13 @@ function Board() {
         photo: game.state.photoData || '',
         path: game.state.path,
         level: game.sheet.level,
+        statTier: statVisualTier(game.state.stats.tier),
+        statCredit: statCredit(game.state.stats.tier),
         streak: currentStreak(game.state.trainingDays, game.today),
       }
     : null;
-  const friendsRanked = [...friends].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
-  const listed = self ? [self, ...friendsRanked] : friendsRanked;
-  const standings = [...listed].sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
-  const rankOf = new Map(standings.map((row, index) => [row.uid, index + 1]));
+  const listed = [...(self ? [self] : []), ...friends].sort(compareStanding);
+  const rankOf = new Map(listed.map((row, index) => [row.uid, index + 1]));
   const selfRank = listed.findIndex((row) => row.uid === me);
 
   useEffect(() => {
