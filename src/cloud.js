@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import firebaseConfig from 'virtual:firebase-config';
 import { banOne, friendCode, shouldResolve, winnerOf } from './challenge.js';
-import { statCredit, statVisualTier } from './logic.js';
+import { decideNameClaim, nameKey, statCredit, statVisualTier } from './logic.js';
 import { titleName } from './honors.js';
 import { currentStreak, longestStreak } from './honors.js';
 import { publicHistory } from './logic.js';
@@ -106,6 +106,7 @@ export function publicCard(state, sheet, today) {
   ];
   return {
     name: state.name || '',
+    nameKey: nameKey(state.name || ''),
     title: titleName(state.titleRank),
     level: sheet.level,
     statTier: statVisualTier(state.stats?.tier),
@@ -121,11 +122,77 @@ export function publicCard(state, sheet, today) {
   };
 }
 
+export async function claimUsername({ uid, name, device, keep = false }) {
+  const key = nameKey(name);
+  if (!key) return 'taken';
+  const on = await cloudEnabled();
+  if (!on || !db) return 'offline';
+  const display = String(name || '').trim().replace(/\s+/g, ' ');
+  const locked = await lockNameDoc({ uid, name: display, device, key });
+  if (locked === 'ok') {
+    if (uid) await tieName(uid, display, key, device);
+    return 'ok';
+  }
+  if (locked === 'taken') {
+    if (keep && uid) {
+      await tieName(uid, display, key, device);
+      return 'kept';
+    }
+    return 'taken';
+  }
+  if (!uid) return locked;
+  const other = await nameUsedBySomeoneElse(uid, key, display);
+  if (other === 'error') return 'error';
+  if (other && !keep) return 'taken';
+  await tieName(uid, display, key, device);
+  return other ? 'kept' : 'ok';
+}
+
+async function lockNameDoc({ uid, name, device, key }) {
+  const { doc, runTransaction } = await import('firebase/firestore');
+  const ref = doc(db, 'names', key);
+  const next = { name, uid: uid || null, device: device || null };
+  try {
+    return await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const action = decideNameClaim(snap.exists() ? snap.data() : null, { uid: uid || null, name, device });
+      if (action === 'taken') return 'taken';
+      tx.set(ref, next, { merge: action !== 'create' });
+      return 'ok';
+    });
+  } catch (error) {
+    const code = String(error?.code || '');
+    if (code === 'permission-denied' || code.endsWith('permission-denied')) return 'denied';
+    return 'error';
+  }
+}
+
+async function nameUsedBySomeoneElse(uid, key, display) {
+  const { collection, getDocs, query, where } = await import('firebase/firestore');
+  try {
+    const byKey = await getDocs(query(collection(db, 'users'), where('nameKey', '==', key)));
+    const byName = await getDocs(query(collection(db, 'users'), where('name', '==', display)));
+    const ids = new Set([...byKey.docs, ...byName.docs].map((item) => item.id));
+    ids.delete(uid);
+    return ids.size > 0;
+  } catch {
+    return 'error';
+  }
+}
+
+async function tieName(uid, display, key, device) {
+  const { doc, setDoc } = await import('firebase/firestore');
+  await setDoc(doc(db, 'users', uid), { name: display, nameKey: key }, { merge: true });
+  if (!device) return;
+  await setDoc(doc(db, 'users', uid, 'private', 'device'), device, { merge: true });
+}
+
 export async function pushCloud(uid, state, sheet, today) {
   const on = await cloudEnabled();
   if (!on || !db || !uid) return;
   const { doc, setDoc } = await import('firebase/firestore');
   const card = publicCard(state, sheet, today);
+  if (!card.nameKey) delete card.nameKey;
   card.code = friendCode(uid);
   await setDoc(doc(db, 'users', uid), card, { merge: true });
   await setDoc(
@@ -138,6 +205,16 @@ export async function pushCloud(uid, state, sheet, today) {
   );
   for (const row of state.history || []) {
     await setDoc(doc(db, 'users', uid, 'history', row.id), publicHistory(row), { merge: true });
+  }
+}
+
+export async function clearOwnHistory(uid) {
+  const on = await cloudEnabled();
+  if (!on || !db || !uid) return;
+  const { collection, getDocs, deleteDoc } = await import('firebase/firestore');
+  for (const folder of ['history', 'friends']) {
+    const rows = await getDocs(collection(db, 'users', uid, folder));
+    for (const item of rows.docs) await deleteDoc(item.ref);
   }
 }
 

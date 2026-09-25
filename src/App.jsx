@@ -8,6 +8,7 @@ import { Trials } from './screens/Trials.jsx';
 import { Skills } from './screens/Skills.jsx';
 import { Leaderboard, Profile } from './screens/Profile.jsx';
 import { Settings } from './screens/Settings.jsx';
+import { Admin } from './screens/Admin.jsx';
 import { FormSheet } from './screens/FormSheet.jsx';
 
 function Shell() {
@@ -18,6 +19,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape' && game.settingsOpen) game.closeSettings();
+      if (event.key === 'Escape' && game.adminOpen) game.closeAdmin();
       if (event.key === 'Escape' && (game.tab === 'profile' || game.tab === 'leaderboard') && game.profileView !== 'self') game.closeProfilePane();
     };
     window.addEventListener('keydown', onKey);
@@ -34,7 +36,8 @@ function Shell() {
   if (!game.state.name || game.state.accountUid !== game.account.uid) return <UsernameGate />;
 
   let body = <Circuit />;
-  if (game.settingsOpen) body = <Settings />;
+  if (game.adminOpen && game.admin) body = <Admin />;
+  else if (game.settingsOpen) body = <Settings />;
   else if (game.tab === 'stats') body = <Stats />;
   else if (game.tab === 'leaderboard') body = <Leaderboard />;
   else if (game.tab === 'trials') body = <Trials />;

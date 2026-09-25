@@ -1,6 +1,8 @@
 import { Info } from 'lucide-react';
 import { workoutPath } from '../paths.js';
-import { openRound } from '../honors.js';
+import { elapsedOf, formatClock, openRound } from '../honors.js';
+import { GUIDE_ART } from '../guideArt.js';
+import { getGuide } from '../guides.js';
 import { cellKey, countChecks, doseLine, prescription, roundCount, targetNote } from '../logic.js';
 import { useGame } from '../state.jsx';
 
@@ -10,6 +12,158 @@ const MARKS = [
   ['modify', 'Quick Fix'],
   ['easier', 'Easier version'],
 ];
+
+const FRAME_CAPTION = ['Start', 'Mid', 'End'];
+
+function exerciseRx(game, exercise) {
+  const stored = game.state.difficulty?.targets?.[exercise.id];
+  const override = game.difficultyOn && typeof stored === 'number' ? stored : undefined;
+  return prescription(exercise, game.state.progression, game.week.scale, override);
+}
+
+function FormFrames({ pose }) {
+  const frames = GUIDE_ART[pose]?.frames;
+  if (!frames?.length) return null;
+  const captions = frames.length === 3 ? FRAME_CAPTION : frames.length === 2 ? ['Start', 'End'] : ['Form'];
+  return (
+    <div className="mt-4 flex gap-2">
+      {frames.map((frame, index) => (
+        <figure key={frame.src} className="min-w-0 flex-1">
+          <img src={frame.src} alt={frame.alt} className="h-28 w-full rounded bg-surface object-contain" />
+          <figcaption className="mt-1 text-center font-body text-[12px] font-normal leading-none text-muted">{captions[index]}</figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+function FormCues({ guide }) {
+  if (!guide) return null;
+  if (GUIDE_ART[guide.pose]?.frames?.length) return <FormFrames pose={guide.pose} />;
+  const lines = (guide.form || []).filter((line) => line && line !== guide.dose).slice(0, 3);
+  if (!lines.length) return null;
+  return (
+    <ul data-testid="form-cues" className="mt-4 list-disc pl-4 font-body text-[14px] font-normal leading-normal text-primary">
+      {lines.map((line) => (
+        <li key={line} className="mb-2">
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TimedRound() {
+  const game = useGame();
+  const focus = game.focus;
+  const exercise = workoutPath(game.state.path).exercises[focus.index];
+  const rx = exercise ? exerciseRx(game, exercise) : null;
+  const guide = rx ? getGuide(rx.guideId) : null;
+  const paused = Boolean(game.checks.paused);
+  const counting = focus.phase === 'prep' || focus.phase === 'rest';
+  const label = focus.phase === 'prep' ? 'Get ready' : focus.phase === 'rest' ? 'Rest' : `Exercise ${focus.index + 1} of 8`;
+
+  if (focus.phase === 'flash' || focus.phase === 'choice') {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-4" data-testid="timed-round">
+        <p className="font-body text-[13px] font-medium leading-none text-muted">Round {focus.round + 1}</p>
+        <p data-testid="round-total" className="mt-4 font-body text-[40px] font-normal leading-none text-primary">
+          {formatClock(focus.totalMs)}
+        </p>
+        {focus.phase === 'choice' ? (
+          <div className="mt-8 flex w-full max-w-xs flex-col gap-3">
+            {focus.round < 3 ? (
+              <button
+                type="button"
+                data-testid="continue-round"
+                onClick={game.continueRound}
+                className="rounded bg-accent px-4 py-3 font-body text-[14px] font-normal text-primary"
+              >
+                Continue to Round {focus.round + 2}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="back-circuit"
+              onClick={game.leaveRound}
+              className="rounded px-4 py-3 font-body text-[14px] font-normal text-primary"
+            >
+              Back to circuit
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col px-4 pb-4 pt-4" data-testid="timed-round">
+      <p className="font-body text-[13px] font-medium leading-none text-muted">{label}</p>
+      {counting ? (
+        <p data-testid="prep-count" className="mt-3 font-body text-[40px] font-normal leading-none text-primary">
+          {focus.seconds}
+        </p>
+      ) : (
+        <p data-testid="round-clock" className="mt-3 font-body text-[40px] font-normal leading-none text-primary">
+          {formatClock(elapsedOf(game.roundTimer, game.clock))}
+        </p>
+      )}
+      {rx ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <p data-testid="focus-title" className="mt-6 font-body text-[22px] font-normal leading-none text-primary">
+            {rx.title}
+          </p>
+          <p data-testid="focus-dose" className="mt-2 font-body text-[14px] font-normal leading-none text-muted">
+            {doseLine(rx)}
+          </p>
+          <FormCues guide={guide} />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1" />
+      )}
+      <div className="mt-auto shrink-0 pt-6">
+        {paused ? (
+          <button
+            type="button"
+            data-testid="resume-today"
+            onClick={game.resumeToday}
+            className="w-full rounded bg-accent px-4 py-3 font-body text-[14px] font-normal text-primary"
+          >
+            Resume
+          </button>
+        ) : focus.phase === 'work' ? (
+          <button
+            type="button"
+            data-testid="set-done"
+            onClick={game.finishSet}
+            className="w-full rounded bg-accent px-4 py-3 font-body text-[14px] font-normal text-primary"
+          >
+            Done
+          </button>
+        ) : focus.phase === 'rest' ? (
+          <button
+            type="button"
+            data-testid="rest-skip"
+            onClick={game.skipFocusRest}
+            className="w-full rounded bg-accent px-4 py-3 font-body text-[14px] font-normal text-primary"
+          >
+            Skip
+          </button>
+        ) : null}
+        {paused ? null : (
+          <button
+            type="button"
+            data-testid="stop-today"
+            onClick={game.stopToday}
+            className="mt-3 w-full font-body text-[14px] font-normal text-muted"
+          >
+            Stop here for today
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function CheckMark() {
   return (
@@ -90,6 +244,7 @@ function RoundRows({ roundIndex }) {
 
 export function Circuit() {
   const game = useGame();
+  if (game.focus) return <TimedRound />;
   const path = workoutPath(game.state.path);
   const done = countChecks(game.checks);
   const paused = Boolean(game.checks.paused);
@@ -126,6 +281,11 @@ export function Circuit() {
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-4">
+          {game.roundTimer ? (
+            <p data-testid="round-clock" className="font-body text-[28px] font-normal leading-none text-primary">
+              {formatClock(elapsedOf(game.roundTimer, game.clock))}
+            </p>
+          ) : null}
           {paused ? (
             <button
               type="button"
@@ -146,14 +306,11 @@ export function Circuit() {
                     Skip
                   </button>
                 </>
-              ) : shown == null ? null : (
+              ) : shown == null || game.roundTimer ? null : (
                 <button
                   type="button"
                   data-testid="time-round"
-                  onClick={() => {
-                    if (game.roundTimer) game.cancelTimer();
-                    else game.startTimer();
-                  }}
+                  onClick={game.startTimer}
                   className="rounded bg-accent px-4 py-2 font-body text-[14px] font-normal text-primary"
                 >
                   Time this round

@@ -1088,6 +1088,24 @@ export function speedTier(speed) {
   return Math.min(12, Math.floor((speed.baseline / speed.best - 1) / 0.1));
 }
 
+export function nameKey(name) {
+  const cleaned = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!cleaned || cleaned === '.' || cleaned === '..' || cleaned.includes('/')) return '';
+  if ([...cleaned].length > 24) return '';
+  return cleaned;
+}
+
+export function decideNameClaim(existing, claim) {
+  const uid = claim?.uid || null;
+  const installId = claim?.device?.installId || '';
+  if (!existing) return uid || installId ? 'create' : 'taken';
+  if (uid && existing.uid === uid) return 'refresh';
+  if (existing.uid) return 'taken';
+  const held = existing.device?.installId || '';
+  if (held && installId && held === installId) return uid ? 'upgrade' : 'refresh';
+  return 'taken';
+}
+
 export async function lookupPublicIp() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 3500);

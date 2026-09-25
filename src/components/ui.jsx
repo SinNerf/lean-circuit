@@ -30,6 +30,13 @@ export function Header() {
         <X size={24} />
       </button>
     );
+  } else if (game.adminOpen) {
+    title = 'Admin';
+    icon = (
+      <button type="button" aria-label="Close" data-testid="close-admin" onClick={game.closeAdmin} className="grid h-10 w-10 place-items-center text-primary">
+        <X size={24} />
+      </button>
+    );
   } else if ((game.tab === 'profile' || game.tab === 'leaderboard') && game.profileView !== 'self') {
     title = game.profileView === 'edit' ? 'Edit' : game.profileView === 'history' || game.profileView === 'friend-history' ? 'History' : game.profileView === 'skills' ? 'Skills' : game.profileView === 'challenge' ? 'Challenge' : game.friend?.name || 'Profile';
     icon = (
@@ -58,7 +65,14 @@ export function Header() {
     <header className="fixed inset-x-0 top-0 z-30 border-b border-line bg-base pt-[var(--inset-top)]">
       <div className="flex h-[56px] items-center justify-between px-4">
         <h1 className="font-display text-[22px] font-semibold leading-none text-primary">{title}</h1>
-        {icon}
+        <div className="flex items-center gap-2">
+          {game.admin && !game.adminOpen && !game.settingsOpen && game.profileView === 'self' ? (
+            <button type="button" data-testid="open-admin" onClick={game.openAdmin} className="font-body text-[14px] font-normal text-primary">
+              Admin
+            </button>
+          ) : null}
+          {icon}
+        </div>
       </div>
     </header>
   );
@@ -70,7 +84,7 @@ export function Nav() {
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-base pb-[var(--inset-bottom)]">
       <div className="grid h-[64px] grid-cols-5">
         {TABS.map(([id, label]) => {
-          const on = game.tab === id && !game.settingsOpen;
+          const on = game.tab === id && !game.settingsOpen && !game.adminOpen;
           return (
             <button
               key={id}

@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { TRIALS, CLASS_TRIALS } from './catalog.js';
 import { exercisesFor, workoutPath } from './paths.js';
 import { draftMatch, flameCrossed, sameScore, scoredMatch, shouldResolve } from './challenge.js';
-import { addFriend, banChallenge, cloudEnabled, createChallenge, ensureCode, finishChallenge, loadBoard, loadFriend, pullBody, pullProfile, pushChallengeScore, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount, watchChallenges } from './cloud.js';
+import { addFriend, banChallenge, claimUsername, clearOwnHistory, cloudEnabled, createChallenge, ensureCode, finishChallenge, loadBoard, loadFriend, pullBody, pullProfile, pushChallengeScore, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount, watchChallenges } from './cloud.js';
+import { isAdmin } from './admin.js';
 import { isProfilePhoto } from './photo.js';
 import { beep, buzz } from './audio.js';
 import {
@@ -11,8 +12,13 @@ import {
   canAscend,
   currentStreak,
   noteRest,
-  openRound,
+  beginFocus,
+  completeFocusStep,
+  continueFocus,
+  elapsedOf,
+  freezeTiming,
   recordRound,
+  resumeTiming,
   titleName,
   weeklyProgress,
 } from './honors.js';
@@ -27,6 +33,7 @@ import {
   freshState,
   levelInfo,
   lookupPublicIp,
+  nameKey,
   newlyUnlockedTrials,
   normalizeChecks,
   parseProgress,
@@ -161,6 +168,7 @@ export function GameProvider({ children }) {
   const [tab, setTabState] = useState('circuit');
   const [skillPath, setSkillPath] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [formId, setFormId] = useState(null);
   const [rest, setRest] = useState(null);
   const [restRound, setRestRound] = useState(null);
@@ -170,6 +178,7 @@ export function GameProvider({ children }) {
   const [skillFlash, setSkillFlash] = useState(null);
   const [hot, setHot] = useState({});
   const [roundTimer, setRoundTimer] = useState(null);
+  const [focus, setFocus] = useState(null);
   const [clock, setClock] = useState(0);
   const [ascendConfirm, setAscendConfirm] = useState(false);
   const [savingName, setSavingName] = useState(false);
@@ -201,6 +210,9 @@ export function GameProvider({ children }) {
   const stateRef = useRef(state);
   const timerRef = useRef(null);
   const restRef = useRef(null);
+  const focusRef = useRef(null);
+  const nameKept = useRef(false);
+  focusRef.current = focus;
   stateRef.current = state;
 
   useEffect(() => {
@@ -225,11 +237,16 @@ export function GameProvider({ children }) {
     pullProfile(uid)
       .then((card) => {
         if (dead) return;
+        const before = stateRef.current;
+        const remoteName = (card?.name || '').trim();
+        nameKept.current = Boolean(remoteName) || (before.accountUid === uid && Boolean(before.name));
         setState((s) => applyAccountProfile(s, uid, card));
         setResolvedUid(uid);
       })
       .catch(() => {
         if (dead) return;
+        const before = stateRef.current;
+        nameKept.current = before.accountUid === uid && Boolean(before.name);
         setState((s) => applyAccountProfile(s, uid, null));
         setResolvedUid(uid);
       });
@@ -243,6 +260,21 @@ export function GameProvider({ children }) {
     ensureCode(account.uid).catch(() => {});
     return undefined;
   }, [account, resolvedUid]);
+
+  useEffect(() => {
+    if (!account?.uid || resolvedUid !== account.uid) return undefined;
+    const live = stateRef.current;
+    if (!live.name || live.accountUid !== account.uid) return undefined;
+    let dead = false;
+    claimUsername({ uid: account.uid, name: live.name, device: live.device, keep: nameKept.current }).then((result) => {
+      if (dead || result !== 'taken' || nameKept.current) return;
+      setStoreError('That username is taken.');
+      setState((s) => ({ ...s, name: null }));
+    });
+    return () => {
+      dead = true;
+    };
+  }, [account, resolvedUid, state.name, state.accountUid]);
 
   useEffect(() => {
     if (!account?.uid || resolvedUid !== account.uid) return undefined;
@@ -355,10 +387,52 @@ export function GameProvider({ children }) {
   }, [today]);
 
   useEffect(() => {
-    if (!roundTimer) return undefined;
+    if (!roundTimer || roundTimer.frozen) return undefined;
+    setClock(Date.now());
     const id = window.setInterval(() => setClock(Date.now()), 250);
     return () => window.clearInterval(id);
   }, [roundTimer]);
+
+  useEffect(() => {
+    const paused = Boolean(normalizeChecks(state.checks, today).paused);
+    if (!focus || paused) return undefined;
+    if (focus.phase !== 'prep' && focus.phase !== 'rest' && focus.phase !== 'flash') return undefined;
+    if (focus.seconds == null || focus.seconds <= 0) return undefined;
+    const id = window.setTimeout(() => {
+      const current = focusRef.current;
+      if (!current || current.phase !== focus.phase || current.seconds !== focus.seconds) return;
+      if (current.seconds > 1) {
+        const next = { ...current, seconds: current.seconds - 1 };
+        focusRef.current = next;
+        setFocus(next);
+        return;
+      }
+      if (current.phase === 'rest' && current.restSpan === 20 && current.restKey) {
+        const key = current.restKey;
+        setState((s) => {
+          const nextChecks = noteRest(normalizeChecks(s.checks, today), key, 'expire');
+          return afterAction({ ...s, checks: nextChecks }, today);
+        });
+      }
+      if ((current.phase === 'prep' || current.phase === 'rest') && !timerRef.current) {
+        const startedAt = Date.now();
+        const timing = { round: current.round, startedAt, elapsed: 0, frozen: false };
+        timerRef.current = timing;
+        setClock(startedAt);
+        setRoundTimer(timing);
+      }
+      if (current.phase === 'prep' || current.phase === 'rest') {
+        beep();
+        buzz();
+      }
+      const next = current.phase === 'flash'
+        ? { ...current, phase: 'choice', seconds: null }
+        : { ...current, phase: 'work', seconds: null, restKey: null, restSpan: null };
+      focusRef.current = next;
+      setFocus(next);
+    }, 1000);
+    return () => window.clearTimeout(id);
+  }, [focus, state.checks, today]);
 
   useEffect(() => {
     if (rest == null) return undefined;
@@ -432,12 +506,30 @@ export function GameProvider({ children }) {
     }
   }, [state.stats, state.skills, state.speed, state.name]);
 
+  function prescribedRx(current, exercise) {
+    const scale = weekState(current.ramp, today).scale;
+    const stored = current.difficulty?.targets?.[exercise.id];
+    const override = difficultyStart(current.ramp) && today >= difficultyStart(current.ramp) && typeof stored === 'number' ? stored : undefined;
+    const prescribed = prescription(exercise, current.progression, scale, override);
+    return { ...prescribed, credit: creditFor(prescribed.credit, exercise, current.path, current.body?.weightKg) };
+  }
+
+  function armClock(round) {
+    if (timerRef.current) return;
+    const startedAt = Date.now();
+    const timing = { round, startedAt, elapsed: 0, frozen: false };
+    timerRef.current = timing;
+    setClock(startedAt);
+    setRoundTimer(timing);
+  }
+
   const api = {
     state,
     today,
     tab,
     setTab(id) {
       setTabState(id);
+      setAdminOpen(false);
       setSkillPath(null);
       setProfileView('self');
       setFriend(null);
@@ -478,6 +570,8 @@ export function GameProvider({ children }) {
       setSkillPath(null);
     },
     settingsOpen,
+    adminOpen,
+    admin: isAdmin(account?.email),
     formId,
     rest,
     restRound,
@@ -497,6 +591,7 @@ export function GameProvider({ children }) {
     difficultyOn,
     pace,
     roundTimer,
+    focus,
     clock,
     ascendConfirm,
     title: titleName(state.titleRank),
@@ -504,12 +599,40 @@ export function GameProvider({ children }) {
     ascendReady: canAscend(state),
     openSettings() {
       setFormId(null);
+      setAdminOpen(false);
       setSettingsOpen(true);
     },
     closeSettings() {
       setSettingsOpen(false);
       setPendingImport(null);
       setImportError('');
+    },
+    openAdmin() {
+      if (!isAdmin(account?.email)) return;
+      setFormId(null);
+      setSettingsOpen(false);
+      setAdminOpen(true);
+    },
+    closeAdmin() {
+      setAdminOpen(false);
+    },
+    async resetOwnProgress() {
+      if (!isAdmin(account?.email)) return;
+      const current = stateRef.current;
+      const kept = { name: current.name, device: current.device, accountUid: current.accountUid };
+      timerRef.current = null;
+      setRoundTimer(null);
+      focusRef.current = null;
+      setFocus(null);
+      restRef.current = null;
+      setRest(null);
+      setRestRound(null);
+      setAdminOpen(false);
+      setSettingsOpen(false);
+      setProfileView('self');
+      setTabState('circuit');
+      setState(() => settlePaths({ ...freshState(), ...kept }));
+      if (account?.uid) await clearOwnHistory(account.uid);
     },
     openForm(id) {
       setSettingsOpen(false);
@@ -535,30 +658,109 @@ export function GameProvider({ children }) {
       setRestRound(null);
     },
     startTimer() {
-      if (timerRef.current) return;
-      const round = openRound(normalizeChecks(stateRef.current.checks, today));
-      if (round == null) return;
-      const startedAt = Date.now();
-      timerRef.current = { round, startedAt };
-      setRoundTimer({ round, startedAt });
+      if (focusRef.current) return;
+      const view = normalizeChecks(stateRef.current.checks, today);
+      if (view.paused) return;
+      const next = beginFocus(view);
+      if (!next) return;
+      timerRef.current = null;
+      setRoundTimer(null);
+      restRef.current = null;
+      setRest(null);
+      setRestRound(null);
+      focusRef.current = next;
+      setFocus(next);
+    },
+    finishSet() {
+      const live = focusRef.current;
+      if (!live || live.phase !== 'work') return;
+      const current = stateRef.current;
+      const view = normalizeChecks(current.checks, today);
+      if (view.paused) return;
+      const key = cellKey(live.round, live.index);
+      if (view.cells[key]) return;
+      const exercise = exercisesFor(current.path)[live.index];
+      if (!exercise) return;
+      const rx = prescribedRx(current, exercise);
+      const elapsed = elapsedOf(timerRef.current, Date.now());
+      const step = completeFocusStep(live, elapsed);
+      if (step.record) {
+        timerRef.current = null;
+        setRoundTimer(null);
+      }
+      setState((s) => {
+        let next = applyCell(s, live.round, live.index, exercise, rx, today);
+        if (step.record) next = recordRound(next, step.ms, today);
+        return afterAction(next, today);
+      });
+      focusRef.current = step.focus;
+      setFocus(step.focus);
+    },
+    skipFocusRest() {
+      const live = focusRef.current;
+      if (!live || live.phase !== 'rest') return;
+      if (normalizeChecks(stateRef.current.checks, today).paused) return;
+      if (live.restSpan === 20 && live.restKey) {
+        const key = live.restKey;
+        setState((s) => {
+          const nextChecks = noteRest(normalizeChecks(s.checks, today), key, 'skip');
+          return afterAction({ ...s, checks: nextChecks }, today);
+        });
+      }
+      armClock(live.round);
+      const next = { ...live, phase: 'work', seconds: null, restKey: null, restSpan: null };
+      focusRef.current = next;
+      setFocus(next);
+    },
+    continueRound() {
+      const live = focusRef.current;
+      const view = normalizeChecks(stateRef.current.checks, today);
+      const next = continueFocus(live, view);
+      if (!next) return;
+      timerRef.current = null;
+      setRoundTimer(null);
+      focusRef.current = next;
+      setFocus(next);
+    },
+    leaveRound() {
+      timerRef.current = null;
+      setRoundTimer(null);
+      focusRef.current = null;
+      setFocus(null);
     },
     cancelTimer() {
       timerRef.current = null;
       setRoundTimer(null);
     },
     async saveName(raw) {
-      const name = raw.trim();
-      if (!name) return;
+      const name = raw.trim().replace(/\s+/g, ' ');
+      if (!nameKey(name)) return;
       setSavingName(true);
       setStoreError('');
       const publicIp = await lookupPublicIp();
+      const previous = stateRef.current.device;
       const device = {
-        installId: crypto.randomUUID(),
+        installId: previous?.installId || crypto.randomUUID(),
         platform: navigator.platform || 'unknown',
         userAgent: navigator.userAgent,
         screen: { width: window.screen.width, height: window.screen.height },
         publicIp,
       };
+      const uid = account?.uid || null;
+      if (uid) {
+        const result = await claimUsername({ uid, name, device, keep: false });
+        if (result === 'taken') {
+          setStoreError('That username is taken.');
+          setSavingName(false);
+          return;
+        }
+        if (result === 'error') {
+          setStoreError('The username could not be saved.');
+          setSavingName(false);
+          return;
+        }
+        if (result === 'ok' || result === 'kept') nameKept.current = true;
+      }
       const nameOk = set(KEYS.name, name);
       const deviceOk = set(KEYS.device, device);
       if (!nameOk || !deviceOk) {
@@ -566,7 +768,7 @@ export function GameProvider({ children }) {
         setSavingName(false);
         return;
       }
-      setState((s) => ({ ...s, name, device }));
+      setState((s) => ({ ...s, name, device, accountUid: uid || s.accountUid }));
       setSavingName(false);
     },
     toggleCheck(round, index) {
@@ -576,13 +778,9 @@ export function GameProvider({ children }) {
       const was = Boolean(view.cells[key]);
       const exercise = exercisesFor(current.path)[index];
       if (!exercise) return;
-      const scale = weekState(current.ramp, today).scale;
-      const stored = current.difficulty?.targets?.[exercise.id];
-      const override = difficultyStart(current.ramp) && today >= difficultyStart(current.ramp) && typeof stored === 'number' ? stored : undefined;
-      const prescribed = prescription(exercise, current.progression, scale, override);
-      const rx = { ...prescribed, credit: creditFor(prescribed.credit, exercise, current.path, current.body?.weightKg) };
+      const rx = prescribedRx(current, exercise);
       const timing = timerRef.current;
-      const elapsed = timing ? Date.now() - timing.startedAt : 0;
+      const elapsed = elapsedOf(timing, Date.now());
       setState((s) => {
         let next = applyCell(s, round, index, exercise, rx, today);
         if (was) next = { ...next, checks: noteRest(next.checks, key, 'clear') };
@@ -607,20 +805,29 @@ export function GameProvider({ children }) {
     resetRounds() {
       timerRef.current = null;
       setRoundTimer(null);
+      focusRef.current = null;
+      setFocus(null);
       restRef.current = null;
       setRest(null);
       setRestRound(null);
       setState((s) => afterAction(resetRounds(s, today), today));
     },
     stopToday() {
-      timerRef.current = null;
-      setRoundTimer(null);
+      const frozen = freezeTiming(timerRef.current, Date.now());
+      timerRef.current = frozen;
+      setRoundTimer(frozen);
       restRef.current = null;
       setRest(null);
       setRestRound(null);
       setState((s) => afterAction(pauseSession(s, today), today));
     },
     resumeToday() {
+      const thawed = resumeTiming(timerRef.current, Date.now());
+      timerRef.current = thawed;
+      if (thawed) {
+        setClock(Date.now());
+        setRoundTimer(thawed);
+      }
       restRef.current = null;
       setRest(null);
       setRestRound(null);

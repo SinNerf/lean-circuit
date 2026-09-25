@@ -231,6 +231,81 @@ function award(badges, id, today) {
   return { ...badges, [id]: today };
 }
 
+export function elapsedOf(timing, now) {
+  if (!timing) return 0;
+  const base = timing.elapsed || 0;
+  if (timing.frozen) return base;
+  return base + Math.max(0, now - timing.startedAt);
+}
+
+export function freezeTiming(timing, now) {
+  if (!timing || timing.frozen) return timing;
+  return { ...timing, elapsed: elapsedOf(timing, now), frozen: true };
+}
+
+export function resumeTiming(timing, now) {
+  if (!timing || !timing.frozen) return timing;
+  return { ...timing, frozen: false, startedAt: now };
+}
+
+export function beginFocus(checks) {
+  const round = openRound(checks);
+  if (round == null) return null;
+  for (let index = 0; index < 8; index += 1) {
+    if (!checks?.cells?.[cellKey(round, index)]) {
+      return { round, index, phase: 'prep', seconds: 10, restSpan: null, restKey: null, totalMs: null };
+    }
+  }
+  return null;
+}
+
+export function completeFocusStep(focus, elapsedMs) {
+  if (!focus || focus.phase !== 'work') return { focus, record: false, ms: 0 };
+  if (focus.index < 7) {
+    return {
+      record: false,
+      ms: 0,
+      focus: {
+        ...focus,
+        index: focus.index + 1,
+        phase: 'rest',
+        seconds: 20,
+        restSpan: 20,
+        restKey: cellKey(focus.round, focus.index),
+      },
+    };
+  }
+  const ms = Math.max(1, Math.round(elapsedMs || 0));
+  return {
+    record: true,
+    ms,
+    focus: {
+      ...focus,
+      phase: 'flash',
+      seconds: 1,
+      restSpan: null,
+      restKey: null,
+      totalMs: ms,
+    },
+  };
+}
+
+export function continueFocus(focus, checks) {
+  if (!focus || focus.phase !== 'choice' || focus.round >= 3) return null;
+  const round = focus.round + 1;
+  if (checks && roundCount(checks, round) >= 8) return null;
+  let index = 0;
+  if (checks) {
+    for (let step = 0; step < 8; step += 1) {
+      if (!checks.cells?.[cellKey(round, step)]) {
+        index = step;
+        break;
+      }
+    }
+  }
+  return { round, index, phase: 'rest', seconds: 90, restSpan: 90, restKey: null, totalMs: null };
+}
+
 export function recordRound(state, ms, today) {
   const duration = Math.max(1, Math.round(ms));
   const speed = {

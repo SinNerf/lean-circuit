@@ -1,8 +1,9 @@
 export const GUIDE_ART = {
   'push-up': {
     frames: [
-      { src: '/guides/push-up-0.jpg', alt: 'Push-up' },
-      { src: '/guides/push-up-1.jpg', alt: 'Push-up' },
+      { src: '/guides/push-up-0.jpg', alt: 'Push-up start' },
+      { src: '/guides/push-up-2.jpg', alt: 'Push-up middle' },
+      { src: '/guides/push-up-1.jpg', alt: 'Push-up end' },
     ],
   },
   'jump-squat': {
@@ -98,10 +99,10 @@ export const GUIDE_ART = {
   },
   'leg-raise': {
     frames: [
-      { src: '/guides/leg-raise-0.jpg', alt: 'Lying leg raise' },
-      { src: '/guides/leg-raise-1.jpg', alt: 'Lying leg raise' },
+      { src: '/guides/leg-raise-0.jpg', alt: 'Lying leg raise start' },
+      { src: '/guides/leg-raise-1.jpg', alt: 'Lying leg raise middle' },
+      { src: '/guides/leg-raise-2.jpg', alt: 'Lying leg raise end' },
     ],
-    note: 'Close match. Lying leg raise on a bench.',
   },
   'broad-jump': {
     frames: [
@@ -116,5 +117,34 @@ export const GUIDE_ART = {
       { src: '/guides/v-up-1.jpg', alt: 'Jackknife sit-up' },
     ],
     note: 'Close match. Jackknife sit-up.',
+  },
+  burpee: {
+    frames: [
+      { src: '/guides/burpee-0.jpg', alt: 'Burpee start' },
+      { src: '/guides/burpee-1.jpg', alt: 'Burpee middle' },
+      { src: '/guides/burpee-2.jpg', alt: 'Burpee end' },
+    ],
+  },
+  pistol: {
+    frames: [
+      { src: '/guides/pistol-0.jpg', alt: 'Pistol squat start' },
+      { src: '/guides/pistol-1.jpg', alt: 'Pistol squat bottom' },
+    ],
+  },
+  'side-bend': {
+    frames: [
+      { src: '/guides/side-bend-0.jpg', alt: 'Side bend start' },
+      { src: '/guides/side-bend-1.jpg', alt: 'Side bend middle' },
+      { src: '/guides/side-bend-2.jpg', alt: 'Side bend end' },
+    ],
+  },
+  downdog: {
+    frames: [
+      { src: '/guides/downdog-0.jpg', alt: 'Plank' },
+      { src: '/guides/downdog-1.jpg', alt: 'Downward dog' },
+    ],
+  },
+  bear: {
+    frames: [{ src: '/guides/bear-0.jpg', alt: 'Bear crawl' }],
   },
 };

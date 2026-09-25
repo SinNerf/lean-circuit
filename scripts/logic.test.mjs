@@ -10,7 +10,13 @@ import {
   hasComeback,
   longestStreak,
   mondayOf,
+  beginFocus,
+  completeFocusStep,
+  continueFocus,
+  elapsedOf,
+  freezeTiming,
   recordRound,
+  resumeTiming,
   titleName,
 } from '../src/honors.js';
 import {
@@ -24,6 +30,8 @@ import {
   difficultyStart,
   freshState,
   levelInfo,
+  nameKey,
+  decideNameClaim,
   parseProgress,
   pathSelectionOpen,
   prescription,
@@ -59,6 +67,7 @@ import {
   winnerOf,
 } from '../src/challenge.js';
 import { shouldRegisterServiceWorker } from '../src/platform.js';
+import { isAdmin } from '../src/admin.js';
 
 const burpees = EXERCISES[0];
 const pushUps = EXERCISES[1];
@@ -170,6 +179,57 @@ test('recovery needs three previous full days and import keeps counters', () => 
   assert.equal(parsed.stats.tier.strength, 16);
   assert.equal(parsed.highestLevel, 2);
   assert.equal(parseProgress({ nope: true }), null);
+});
+
+test('a round clock starts from the tap, freezes on pause, and records that span', () => {
+  const started = { round: 0, startedAt: 1000, elapsed: 0, frozen: false };
+  assert.equal(elapsedOf(started, 1000), 0);
+  assert.equal(elapsedOf(started, 3500), 2500);
+  const frozen = freezeTiming(started, 3500);
+  assert.equal(frozen.frozen, true);
+  assert.equal(elapsedOf(frozen, 9000), 2500);
+  const resumed = resumeTiming(frozen, 9000);
+  assert.equal(resumed.frozen, false);
+  assert.equal(elapsedOf(resumed, 10000), 3500);
+  let state = freshState();
+  state = recordRound(state, elapsedOf(resumed, 10000), '2026-09-22');
+  assert.equal(state.speed.baseline, 3500);
+  assert.equal(state.roundTimes[0].ms, 3500);
+});
+
+test('a timed round preps, rests, flashes the total, then offers the next round', () => {
+  const checks = { cells: {}, skipped: {}, expired: {} };
+  const opened = beginFocus(checks);
+  assert.equal(opened.phase, 'prep');
+  assert.equal(opened.seconds, 10);
+  assert.equal(opened.round, 0);
+  assert.equal(opened.index, 0);
+  checks.cells['0-0'] = true;
+  checks.cells['0-1'] = true;
+  const mid = beginFocus(checks);
+  assert.equal(mid.index, 2);
+  const working = { ...mid, phase: 'work', seconds: null };
+  const rested = completeFocusStep(working, 4000);
+  assert.equal(rested.record, false);
+  assert.equal(rested.focus.phase, 'rest');
+  assert.equal(rested.focus.seconds, 20);
+  assert.equal(rested.focus.restSpan, 20);
+  assert.equal(rested.focus.restKey, '0-2');
+  assert.equal(rested.focus.index, 3);
+  const last = { ...working, index: 7 };
+  const finished = completeFocusStep(last, 82000);
+  assert.equal(finished.record, true);
+  assert.equal(finished.ms, 82000);
+  assert.equal(finished.focus.phase, 'flash');
+  assert.equal(finished.focus.seconds, 1);
+  assert.equal(finished.focus.totalMs, 82000);
+  const chosen = { ...finished.focus, phase: 'choice', seconds: null };
+  const next = continueFocus(chosen, checks);
+  assert.equal(next.round, 1);
+  assert.equal(next.phase, 'rest');
+  assert.equal(next.seconds, 90);
+  assert.equal(next.restSpan, 90);
+  assert.equal(continueFocus({ ...chosen, round: 3 }, checks), null);
 });
 
 test('speed tier uses the baseline ratio and ignores a slower round', () => {
@@ -745,4 +805,29 @@ test('leaderboard standing uses visual tier of raw stats, then raw credit', () =
 test('service worker stays off inside the native webview', () => {
   assert.equal(shouldRegisterServiceWorker({ isNativePlatform: () => true }), false);
   assert.equal(shouldRegisterServiceWorker({ isNativePlatform: () => false }), true);
+});
+
+test('only the admin email opens the panel', () => {
+  assert.equal(isAdmin('nukelauncher7@gmail.com'), true);
+  assert.equal(isAdmin(' Nukelauncher7@gmail.com '), true);
+  assert.equal(isAdmin('someone@example.com'), false);
+  assert.equal(isAdmin(''), false);
+});
+
+test('a username is one claim, kept for its account, or held by the same device', () => {
+  assert.equal(nameKey('  Alex '), 'alex');
+  assert.equal(nameKey('Alex'), nameKey('ALEX'));
+  assert.equal(nameKey(''), '');
+  assert.equal(nameKey('/'), '');
+  const device = { installId: 'device-a' };
+  const other = { installId: 'device-b' };
+  assert.equal(decideNameClaim(null, { uid: 'u1', device, name: 'Alex' }), 'create');
+  assert.equal(decideNameClaim(null, { uid: null, device, name: 'Alex' }), 'create');
+  assert.equal(decideNameClaim(null, { uid: null, device: null, name: 'Alex' }), 'taken');
+  assert.equal(decideNameClaim({ uid: 'u1', device }, { uid: 'u1', device, name: 'Alex' }), 'refresh');
+  assert.equal(decideNameClaim({ uid: 'u1', device }, { uid: 'u2', device: other, name: 'Alex' }), 'taken');
+  assert.equal(decideNameClaim({ uid: null, device }, { uid: null, device, name: 'Alex' }), 'refresh');
+  assert.equal(decideNameClaim({ uid: null, device }, { uid: 'u1', device, name: 'Alex' }), 'upgrade');
+  assert.equal(decideNameClaim({ uid: null, device }, { uid: 'u1', device: other, name: 'Alex' }), 'taken');
+  assert.equal(decideNameClaim({ uid: 'u1', device }, { uid: null, device, name: 'Alex' }), 'taken');
 });

@@ -28,6 +28,29 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(uid);
       }
     }
+    match /names/{nameId} {
+      function fields() {
+        return request.resource.data.keys().hasOnly(['name', 'uid', 'device'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 24;
+      }
+      function ownAccount() {
+        return signedIn() && request.resource.data.uid == request.auth.uid;
+      }
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if fields() && (
+        ownAccount()
+        || (!signedIn() && request.resource.data.uid == null && request.resource.data.device.installId is string && request.resource.data.device.installId.size() > 0)
+      );
+      allow update: if fields() && (
+        (signedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid)
+        || (signedIn() && resource.data.uid == null && ownAccount() && request.resource.data.device.installId == resource.data.device.installId)
+        || (!signedIn() && resource.data.uid == null && request.resource.data.uid == null && request.resource.data.device.installId == resource.data.device.installId)
+      );
+      allow delete: if false;
+    }
     match /challenges/{challengeId} {
       function party() {
         return signedIn() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);

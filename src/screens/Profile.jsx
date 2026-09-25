@@ -16,9 +16,12 @@ function emblemId(id) {
   return CORE_BADGES.some((item) => item.id === id) ? id : 'weekly';
 }
 
-function earnedBadges(badges, weekly) {
-  const rows = CORE_BADGES.filter((badge) => badges?.[badge.id]).map((badge) => ({ id: badge.id, name: badge.name }));
-  for (const badge of weekly || []) rows.push({ id: badge.id, name: 'Weekly' });
+function cabinet(earnedIds) {
+  const earned = new Set(earnedIds || []);
+  const rows = CORE_BADGES.map((badge) => ({ id: badge.id, name: badge.name, earned: earned.has(badge.id) }));
+  for (const id of earned) {
+    if (!CORE_BADGES.some((badge) => badge.id === id)) rows.push({ id, name: 'Weekly', earned: true });
+  }
   return rows;
 }
 
@@ -57,7 +60,10 @@ function OwnSheet() {
   const mark = roman(game.state.ascend?.count || 0);
   const path = workoutPath(game.state.path);
   const workouts = (game.state.history || []).filter((row) => (row.rounds || 0) > 0).length;
-  const badges = earnedBadges(game.state.badges, game.state.weeklyBadges);
+  const badges = cabinet([
+    ...Object.keys(game.state.badges || {}),
+    ...(game.state.weeklyBadges || []).map((badge) => badge.id),
+  ]);
   return (
     <Sheet
       photo={game.state.photoData || ''}
@@ -94,10 +100,7 @@ function FriendSheet() {
     );
   }
   const path = workoutPath(friend.path);
-  const badges = (friend.badges || []).map((id) => ({
-    id,
-    name: CORE_BADGES.find((badge) => badge.id === id)?.name || 'Weekly',
-  }));
+  const badges = cabinet(friend.badges);
   return (
     <div>
       <Sheet
@@ -129,7 +132,7 @@ function FriendSheet() {
 }
 
 function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, longest, badges, featuredId, onFeature, skillNames, onSkills, flamePulse, badgePulse, onHistory, ascend }) {
-  const featured = badges.find((badge) => badge.id === featuredId) || null;
+  const featured = badges.find((badge) => badge.earned && badge.id === featuredId) || null;
   const label = 'font-body text-[13px] font-medium leading-none text-muted';
   return (
     <div className="pb-8">
@@ -181,18 +184,23 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
             <p className="mt-2 font-body text-[14px] font-normal text-primary">{featured.name}</p>
           </div>
         ) : null}
-        <div data-testid="badge-shelf" className="mt-2 flex flex-wrap justify-start gap-2">
+        <div data-testid="badge-shelf" className="mt-4 grid grid-cols-3 gap-x-3 gap-y-4">
           {badges.map((badge) => {
-            const markClass = badge.id === featuredId ? 'ring-2 ring-gold' : '';
+            const markClass = badge.earned && badge.id === featuredId ? 'ring-2 ring-gold' : '';
             const body = (
               <>
-                <BadgeEmblem id={emblemId(badge.id)} earned pulse={badgePulse === badge.id} className="h-8 w-8 text-gold" />
-                <p className="mt-2 font-body text-[12px] font-normal leading-none text-primary">{badge.name}</p>
+                <BadgeEmblem
+                  id={emblemId(badge.id)}
+                  earned={badge.earned}
+                  pulse={badgePulse === badge.id}
+                  className={`h-14 w-14 ${badge.earned ? 'text-gold' : 'text-muted'}`}
+                />
+                <p className={`mt-2 font-body text-[12px] font-normal leading-snug ${badge.earned ? 'text-primary' : 'text-muted'}`}>{badge.name}</p>
               </>
             );
-            if (!onFeature) {
+            if (!onFeature || !badge.earned) {
               return (
-                <div key={badge.id} data-testid={`badge-earned-${badge.id}`} className="w-20 text-left text-primary">
+                <div key={badge.id} data-testid={badge.earned ? `badge-earned-${badge.id}` : `badge-locked-${badge.id}`} className="text-left">
                   {body}
                 </div>
               );
@@ -203,7 +211,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
                 type="button"
                 data-testid={`badge-earned-${badge.id}`}
                 onClick={() => onFeature(badge.id)}
-                className={`w-20 text-left text-primary ${markClass}`}
+                className={`rounded text-left ${markClass}`}
               >
                 {body}
               </button>
