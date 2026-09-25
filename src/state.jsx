@@ -221,11 +221,15 @@ export function GameProvider({ children }) {
   const focusRef = useRef(null);
   const nameKept = useRef(false);
   const flagBase = useRef(null);
+  const pendingMarks = useRef([]);
+  const pulling = useRef(false);
   focusRef.current = focus;
   stateRef.current = state;
 
   useEffect(() => {
     persist(state);
+    const ids = pendingMarks.current.splice(0, pendingMarks.current.length);
+    for (const id of ids) markReportApplied(id).catch(() => {});
   }, [state]);
 
   useEffect(() => {
@@ -291,25 +295,40 @@ export function GameProvider({ children }) {
   useEffect(() => {
     if (!account?.uid || resolvedUid !== account.uid) return undefined;
     let dead = false;
-    loadOwnReverts(account.uid)
-      .then((rows) => {
-        if (dead) return;
-        const pending = rows.filter((row) => !(stateRef.current.appliedReports || []).includes(row.id));
-        if (pending.length) {
-          setState((s) => {
-            const next = pending.reduce((acc, row) => applyRevert(acc, row), s);
-            const ids = pending.map((row) => row.id);
-            return { ...next, appliedReports: [...(s.appliedReports || []), ...ids] };
-          });
-        }
-        for (const row of rows) markReportApplied(row.id).catch(() => {});
-        setReportsReady(true);
-      })
-      .catch(() => {
-        if (!dead) setReportsReady(true);
-      });
+    const pull = () => {
+      if (pulling.current) return;
+      pulling.current = true;
+      loadOwnReverts(account.uid)
+        .then((rows) => {
+          if (dead) return;
+          const seen = new Set([...(stateRef.current.appliedReports || []), ...pendingMarks.current]);
+          const pending = rows.filter((row) => row?.id && !seen.has(row.id));
+          if (pending.length) {
+            pendingMarks.current.push(...pending.map((row) => row.id));
+            setState((s) => {
+              const ids = pending.map((row) => row.id).filter((id) => !(s.appliedReports || []).includes(id));
+              if (!ids.length) return s;
+              const next = pending.reduce((acc, row) => ((s.appliedReports || []).includes(row.id) ? acc : applyRevert(acc, row)), s);
+              return { ...next, appliedReports: [...(s.appliedReports || []), ...ids] };
+            });
+          }
+          setReportsReady(true);
+        })
+        .catch(() => {
+          if (!dead) setReportsReady(true);
+        })
+        .finally(() => {
+          pulling.current = false;
+        });
+    };
+    pull();
+    const onShow = () => {
+      if (document.visibilityState === 'visible') pull();
+    };
+    document.addEventListener('visibilitychange', onShow);
     return () => {
       dead = true;
+      document.removeEventListener('visibilitychange', onShow);
     };
   }, [account, resolvedUid]);
 
@@ -678,6 +697,16 @@ export function GameProvider({ children }) {
     },
     closeAdmin() {
       setAdminOpen(false);
+    },
+    applyReport(report) {
+      if (!report?.id || !report?.date || report.uid !== account?.uid) return;
+      if ((stateRef.current.appliedReports || []).includes(report.id) || pendingMarks.current.includes(report.id)) return;
+      pendingMarks.current.push(report.id);
+      setState((s) => {
+        if ((s.appliedReports || []).includes(report.id)) return s;
+        const next = applyRevert(s, report);
+        return { ...next, appliedReports: [...(s.appliedReports || []), report.id] };
+      });
     },
     async resetOwnProgress() {
       if (!isAdmin(account?.email)) return;

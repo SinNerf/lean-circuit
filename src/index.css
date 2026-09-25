@@ -33,7 +33,7 @@
 
 html {
   color-scheme: dark;
-  background: #101418;
+  background: linear-gradient(to bottom, #101418, #1c2228);
 }
 
 html,
@@ -44,10 +44,14 @@ body,
 
 body {
   margin: 0;
-  background: #101418;
+  background: linear-gradient(to bottom, #101418, #1c2228);
   color: #EDE6DC;
   font-family: 'Work Sans';
   font-weight: 400;
+}
+
+.app-ground {
+  background: linear-gradient(to bottom, #101418, #1c2228);
 }
 
 button,
@@ -74,6 +78,29 @@ input {
 
 .flame-once {
   animation: flame-once 700ms ease-out 1;
+}
+
+.flame-live.flame-once {
+  animation: flame-once 700ms ease-out 1;
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    transform: scale(1.06) translateY(-2px);
+  }
+}
+
+.flame-live {
+  transform-origin: 50% 85%;
+  animation: flame-flicker 1.3s ease-in-out infinite;
+}
+
+.medal-glow {
+  filter: drop-shadow(0 0 6px #c9a155);
 }
 
 @keyframes rise-once {

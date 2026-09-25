@@ -106,7 +106,7 @@ export function BadgeEmblem({ id, earned, className, pulse = false }) {
     <svg
       viewBox="0 0 64 64"
       aria-hidden="true"
-      className={`${className || ''} ${pulse && earned ? 'flame-once' : ''} ${earned ? '' : 'opacity-40'}`}
+      className={`${className || ''} ${earned ? 'medal-glow' : ''} ${pulse && earned ? 'flame-once' : ''} ${earned ? '' : 'opacity-40'}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2.2"

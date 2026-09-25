@@ -1,4 +1,3 @@
-import { EXERCISES } from './catalog.js';
 import { exerciseById, workoutPath } from './paths.js';
 
 export const STAT_IDS = ['strength', 'power', 'endurance', 'core', 'cardio'];
@@ -43,7 +42,7 @@ export const STAT_POINT = 0.05;
 const LEGACY_POINT = 0.2;
 
 export const PATH_UNLOCK_LINE =
-  '5 full circuits on separate days, at least 3 of those days felt-clean as the dominant rating, and no more than 1 Quick Fix modification across those 5 sessions.';
+  '5 full circuits on separate days, at least 3 felt clean, and one of those days may include a single Quick Fix.';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const BELTS = ['bronze', 'silver', 'gold', 'platinum'];
@@ -99,7 +98,7 @@ export function freshState() {
     skills: {},
     highestLevel: 0,
     seenUnlocks: [],
-    ramp: { enabled: true, firstDate: null, anchorDate: null, baseWeek: 1 },
+    ramp: { enabled: true, firstDate: null, anchorDate: null, baseWeek: 1, finished: 0 },
     progression: { adopted: {}, dismissed: {} },
     completedDays: [],
     recoveryDismissed: null,
@@ -174,19 +173,19 @@ export function weekState(ramp, today) {
   }
   const anchor = ramp.anchorDate || ramp.firstDate;
   const base = ramp.baseWeek || 1;
+  const week = base + (ramp.finished || 0);
   const days = Math.max(0, daysBetween(anchor, today));
-  const week = base + Math.floor(days / 7);
   return { week, scale: scaleForWeek(week, enabled), dayInWeek: (days % 7) + 1 };
 }
 
 export function repeatWeek(ramp, today) {
   const current = weekState(ramp, today);
-  return { ...ramp, anchorDate: today, baseWeek: current.week };
+  return { ...ramp, anchorDate: today, baseWeek: current.week, finished: 0 };
 }
 
 export function skipWeek(ramp, today) {
   const current = weekState(ramp, today);
-  return { ...ramp, anchorDate: today, baseWeek: current.week + 1 };
+  return { ...ramp, anchorDate: today, baseWeek: current.week + 1, finished: 0 };
 }
 
 export function prescription(exercise, progression, scale, override) {
@@ -309,23 +308,27 @@ export function roundCount(checks, round) {
   return n;
 }
 
+function noteCircuit(ramp, wasDone, isDone) {
+  if (wasDone === isDone) return ramp;
+  const finished = Math.max(0, (ramp.finished || 0) + (isDone ? 1 : -1));
+  return { ...ramp, finished };
+}
+
 function addCell(state, checks, key, exercise, rx, today) {
   const stats = cloneStats(state.stats);
-  const stamp = stats.daily[exercise.id];
-  const already = Boolean(stamp && stamp.date === today);
   const parts = {};
   for (const stat of exercise.stats) {
     parts[stat] = rx.credit;
     stats.lifetime[stat] = (stats.lifetime[stat] || 0) + rx.credit;
-    if (!already) stats.tier[stat] = (stats.tier[stat] || 0) + rx.credit;
+    stats.tier[stat] = (stats.tier[stat] || 0) + rx.credit;
   }
   stats.exerciseLifetime[exercise.id] = (stats.exerciseLifetime[exercise.id] || 0) + rx.credit;
-  if (!already) stats.daily[exercise.id] = { date: today, amount: rx.credit };
+  stats.daily[exercise.id] = { date: today, amount: rx.credit };
   checks.cells[key] = {
     exerciseId: exercise.id,
     credit: rx.credit,
     target: rx.credit,
-    tierGranted: !already,
+    tierGranted: true,
     parts,
     checkedAt: Date.now(),
   };
@@ -338,6 +341,7 @@ function addCell(state, checks, key, exercise, rx, today) {
       baseWeek: ramp.baseWeek || 1,
     };
   }
+  const wasDone = (state.completedDays || []).includes(today);
   const volumeByDay = { ...(state.volumeByDay || {}) };
   const dayVolume = { ...(volumeByDay[today] || {}) };
   dayVolume[exercise.id] = (dayVolume[exercise.id] || 0) + rx.credit;
@@ -345,16 +349,17 @@ function addCell(state, checks, key, exercise, rx, today) {
   const trainingDays = (state.trainingDays || []).includes(today)
     ? state.trainingDays
     : [...(state.trainingDays || []), today].sort();
+  const completedDays = withCompletion(checks, state.completedDays, today);
   return {
     ...state,
     checks,
     stats,
-    ramp,
+    ramp: noteCircuit(ramp, wasDone, completedDays.includes(today)),
     volumeByDay,
     trainingDays,
     seenExercises: { ...(state.seenExercises || {}), [exercise.id]: true },
-    completedDays: withCompletion(checks, state.completedDays, today),
-    difficulty: recordSet(state, today, key, exercise.id),
+    completedDays,
+    difficulty: recordSet({ ...state, ramp }, today, key, exercise.id),
   };
 }
 
@@ -370,7 +375,15 @@ function removeCell(state, checks, key, today) {
     0,
     (stats.exerciseLifetime[cell.exerciseId] || 0) - cell.credit,
   );
-  if (cell.tierGranted) delete stats.daily[cell.exerciseId];
+  if (cell.tierGranted) {
+    const still = Object.values(checks.cells).some((item) => item.exerciseId === cell.exerciseId);
+    if (still) {
+      const amount = Object.values(checks.cells)
+        .filter((item) => item.exerciseId === cell.exerciseId)
+        .reduce((sum, item) => sum + (item.credit || 0), 0);
+      stats.daily[cell.exerciseId] = { date: today, amount };
+    } else delete stats.daily[cell.exerciseId];
+  }
   const volumeByDay = { ...(state.volumeByDay || {}) };
   const dayVolume = { ...(volumeByDay[today] || {}) };
   const left = Math.max(0, (dayVolume[cell.exerciseId] || 0) - (cell.credit || 0));
@@ -384,16 +397,19 @@ function removeCell(state, checks, key, today) {
   delete expired[key];
   checks.skipped = skipped;
   checks.expired = expired;
+  const wasDone = (state.completedDays || []).includes(today);
   const trainingDays = Object.keys(checks.cells).length
     ? state.trainingDays || []
     : (state.trainingDays || []).filter((day) => day !== today);
+  const completedDays = withCompletion(checks, state.completedDays, today);
   return {
     ...state,
     checks,
     stats,
+    ramp: noteCircuit(state.ramp, wasDone, completedDays.includes(today)),
     volumeByDay,
     trainingDays,
-    completedDays: withCompletion(checks, state.completedDays, today),
+    completedDays,
     difficulty: dropSet(state.difficulty, today, key),
   };
 }
@@ -519,23 +535,11 @@ export function mondayAfter(iso) {
   return on === iso ? addDays(iso, 7) : on;
 }
 
-function week4Start(ramp) {
-  if (!ramp?.anchorDate && !ramp?.firstDate) return null;
-  const anchor = ramp.anchorDate || ramp.firstDate;
-  const base = ramp.baseWeek || 1;
-  if (base >= 4) return anchor;
-  return addDays(anchor, (4 - base) * 7);
-}
-
 export function difficultyStart(ramp) {
   if (!ramp) return null;
-  const origin = week4Start(ramp);
-  const fromWeek = origin ? mondayOnOrAfter(origin) : null;
-  if (ramp.enabled !== false) return fromWeek;
-  const fromOff = ramp.offSince ? mondayAfter(ramp.offSince) : null;
-  const candidates = [fromWeek, fromOff].filter(Boolean);
-  if (!candidates.length) return null;
-  return candidates.sort()[0];
+  const origin = ramp.firstDate || ramp.anchorDate;
+  if (!origin) return null;
+  return mondayOfIso(origin);
 }
 
 export function readDifficulty(raw) {
@@ -700,19 +704,24 @@ function circuitDates(state) {
   return dates;
 }
 
+function rateKind(set) {
+  if (set?.rating === 'slipped' || set?.rating === 'modify') return set.rating;
+  return 'clean';
+}
+
 function dayQuality(state, date) {
   const sets = Object.values(state.difficulty?.ratings?.[date] || {});
   if (sets.length) {
     const counts = { clean: 0, slipped: 0, modify: 0 };
     let fixes = 0;
     for (const set of sets) {
-      if (set.rating === 'clean' || set.rating === 'slipped' || set.rating === 'modify') counts[set.rating] += 1;
+      counts[rateKind(set)] += 1;
       if (set.rating === 'modify' || set.easier) fixes += 1;
     }
     return { clean: leadingRating(counts) === 'clean', fixes };
   }
   const row = (state.history || []).find((item) => item.date === date && (item.rounds || 0) >= 4);
-  return { clean: false, fixes: row?.modified?.length || 0 };
+  return { clean: true, fixes: row?.modified?.length || 0 };
 }
 
 export function pathSelectionOpen(state) {
@@ -753,7 +762,8 @@ function adjustOne(state, difficulty, monday) {
   const targets = { ...difficulty.targets };
   const streaks = { ...difficulty.streaks };
   const notes = { ...difficulty.notes };
-  for (const exercise of EXERCISES) {
+  const list = workoutPath(state.path).exercises;
+  for (const exercise of list) {
     const id = exercise.id;
     let fullDays = 0;
     let easier = 0;
@@ -763,7 +773,7 @@ function adjustOne(state, difficulty, monday) {
       if (sets.length && sets.every((set) => !set.easier && set.rating !== 'modify')) fullDays += 1;
       for (const set of sets) {
         if (set.easier) easier += 1;
-        if (set.rating === 'clean' || set.rating === 'slipped' || set.rating === 'modify') counts[set.rating] += 1;
+        counts[rateKind(set)] += 1;
       }
     }
     const completion = fullDays / days.length;
@@ -1223,6 +1233,7 @@ export function parseProgress(data) {
       firstDate: data.ramp.firstDate || null,
       anchorDate: data.ramp.anchorDate || null,
       baseWeek: data.ramp.baseWeek || 1,
+      finished: data.ramp.finished || 0,
       offSince: data.ramp.offSince || null,
     },
     progression: {

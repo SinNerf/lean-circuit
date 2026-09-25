@@ -6,6 +6,7 @@ import {
   afterAction,
   ascend,
   canAscend,
+  currentStreak,
   ensureWeekly,
   hasComeback,
   longestStreak,
@@ -101,13 +102,15 @@ test('week scales and overrides', () => {
   assert.equal(scaleForWeek(3, true), 0.9);
   assert.equal(scaleForWeek(4, true), 1);
   assert.equal(scaleForWeek(1, false), 1);
-  const ramp = { enabled: true, firstDate: '2026-09-01', anchorDate: '2026-09-01', baseWeek: 1 };
+  const ramp = { enabled: true, firstDate: '2026-09-01', anchorDate: '2026-09-01', baseWeek: 1, finished: 0 };
   assert.equal(weekState(ramp, '2026-09-01').week, 1);
-  assert.equal(weekState(ramp, '2026-09-11').week, 2);
+  assert.equal(weekState(ramp, '2026-09-11').week, 1);
+  assert.equal(weekState({ ...ramp, finished: 1 }, '2026-09-11').week, 2);
+  assert.equal(weekState({ ...ramp, finished: 1 }, '2026-09-11').scale, 0.75);
   assert.equal(weekState({ enabled: true, firstDate: null, anchorDate: null, baseWeek: 1 }, '2026-09-22').scale, 0.55);
-  const repeated = repeatWeek(ramp, '2026-09-11');
-  assert.equal(weekState(repeated, '2026-09-11').week, 2);
-  assert.equal(weekState(repeated, '2026-09-17').week, 2);
+  const repeated = repeatWeek({ ...ramp, finished: 2 }, '2026-09-11');
+  assert.equal(repeated.baseWeek, 3);
+  assert.equal(repeated.finished, 0);
   assert.equal(weekState(repeated, '2026-09-18').week, 3);
   const skipped = skipWeek(ramp, '2026-09-01');
   assert.equal(weekState(skipped, '2026-09-01').week, 2);
@@ -128,7 +131,7 @@ test('prescribed credit rounds and push-ups keep the range label at full dose', 
   assert.equal(adopted.guideId, 'twin-fang');
 });
 
-test('daily cap, uncheck refund, reset keeps credit, and a second exercise still feeds the stat', () => {
+test('every set feeds tier, an uncheck refunds that set, and a reset keeps the credit', () => {
   let state = freshState();
   const rx = prescription(burpees, state.progression, 0.55);
   state = applyCell(state, 0, 0, burpees, rx, '2026-09-22');
@@ -136,20 +139,20 @@ test('daily cap, uncheck refund, reset keeps credit, and a second exercise still
   assert.equal(state.stats.tier.cardio, 8);
   assert.equal(state.stats.lifetime.strength, 8);
   state = applyCell(state, 1, 0, burpees, rx, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 8);
+  assert.equal(state.stats.tier.strength, 16);
   assert.equal(state.stats.lifetime.strength, 16);
   state = applyCell(state, 0, 0, burpees, rx, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 0);
-  assert.equal(state.stats.daily.burpees, undefined);
+  assert.equal(state.stats.tier.strength, 8);
+  assert.equal(state.stats.daily.burpees.amount, 8);
   state = applyCell(state, 0, 0, burpees, rx, '2026-09-22');
   const push = prescription(pushUps, state.progression, 0.55);
   state = applyCell(state, 0, 1, pushUps, push, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 16);
+  assert.equal(state.stats.tier.strength, 24);
   state = resetRounds(state, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 16);
+  assert.equal(state.stats.tier.strength, 24);
   assert.equal(Object.keys(state.checks.cells).length, 0);
   state = applyCell(state, 0, 0, burpees, rx, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 16);
+  assert.equal(state.stats.tier.strength, 32);
   assert.equal(state.stats.lifetime.strength, 32);
 });
 
@@ -279,6 +282,12 @@ test('weekly objective stays for the monday week and a one-day gap is a comeback
   assert.equal(hasComeback(['2026-09-01', '2026-09-02']), false);
   assert.equal(hasComeback(['2026-09-01', '2026-09-03']), true);
   assert.equal(longestStreak(['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']), 7);
+  const trained = ['2026-09-01', '2026-09-02', '2026-09-03'];
+  assert.equal(currentStreak(trained, '2026-09-04'), 3);
+  assert.equal(currentStreak(trained, '2026-09-05'), 3);
+  assert.equal(currentStreak([...trained, '2026-09-05'], '2026-09-05'), 4);
+  assert.equal(currentStreak(trained, '2026-09-06'), 0);
+  assert.equal(longestStreak(['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-05']), 4);
   let calls = 0;
   let state = ensureWeekly(freshState(), '2026-09-22', () => {
     calls += 1;
@@ -390,32 +399,27 @@ function logDays(ratings, days, rating = 'clean', skipId = null) {
   }
 }
 
-test('weekly targets wait for week 4, then move each exercise on its own', () => {
+test('weekly targets start in the first week, then move each exercise on the path', () => {
   const early = weekRamp('2026-09-01');
-  assert.equal(difficultyStart(early), '2026-09-28');
-  assert.equal(difficultyStart(weekRamp('2026-08-17')), '2026-09-07');
+  assert.equal(difficultyStart(early), '2026-08-31');
+  assert.equal(difficultyStart(weekRamp('2026-08-17')), '2026-08-17');
   assert.equal(
     difficultyStart({ enabled: false, firstDate: '2026-09-01', anchorDate: '2026-09-01', baseWeek: 1, offSince: '2026-09-22' }),
-    '2026-09-28',
-  );
-  assert.equal(
-    difficultyStart({ enabled: false, firstDate: '2026-09-01', anchorDate: '2026-09-01', baseWeek: 1, offSince: '2026-09-21' }),
-    '2026-09-28',
-  );
-  assert.equal(
-    difficultyStart({ enabled: false, firstDate: '2026-09-01', anchorDate: '2026-09-01', baseWeek: 1, offSince: '2026-09-10' }),
-    '2026-09-14',
+    '2026-08-31',
   );
 
   let held = freshState();
+  held.path = 'superhuman';
   held.ramp = early;
   held.difficulty.ratings = { '2026-09-16': { a: { exerciseId: 'push-ups', rating: 'modify', easier: true } } };
-  assert.equal(applyWeeklyTargets(held, '2026-09-21'), held);
+  held = applyWeeklyTargets(held, '2026-09-21');
+  assert.equal(held.difficulty.targets['push-ups'], 13);
   held = applyCell(held, 0, 1, pushUps, prescription(pushUps, held.progression, 0.9), '2026-09-21');
-  assert.equal(held.difficulty.ratings['2026-09-21'], undefined);
+  assert.equal(held.difficulty.ratings['2026-09-21']['0-1'].rating, null);
 
   const days = ['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26'];
   let state = freshState();
+  state.path = 'superhuman';
   state.ramp = early;
   const ratings = {};
   logDays(ratings, days);
@@ -437,6 +441,7 @@ test('weekly targets wait for week 4, then move each exercise on its own', () =>
   assert.equal(again, state);
 
   const boundary = freshState();
+  boundary.path = 'superhuman';
   boundary.ramp = early;
   const even = {};
   logDays(even, days);
@@ -447,6 +452,7 @@ test('weekly targets wait for week 4, then move each exercise on its own', () =>
   assert.equal(stayed.difficulty.streaks['push-ups'], 0);
 
   const rated = freshState();
+  rated.path = 'superhuman';
   rated.ramp = early;
   const modifyHeavy = {};
   logDays(modifyHeavy, days.slice(0, 4));
@@ -461,6 +467,7 @@ test('weekly targets wait for week 4, then move each exercise on its own', () =>
   assert.equal(modified.difficulty.notes['push-ups'].text.includes('building consistency first'), true);
 
   const quiet = freshState();
+  quiet.path = 'superhuman';
   quiet.ramp = early;
   quiet.difficulty = {
     ...quiet.difficulty,
@@ -474,6 +481,7 @@ test('weekly targets wait for week 4, then move each exercise on its own', () =>
   assert.equal(skipped.difficulty.notes['push-ups'], undefined);
 
   let climb = freshState();
+  climb.path = 'superhuman';
   climb.ramp = early;
   const first = {};
   logDays(first, ['2026-09-22', '2026-09-23', '2026-09-24']);
@@ -497,13 +505,15 @@ test('weekly targets wait for week 4, then move each exercise on its own', () =>
     for (const set of Object.values(blank[day])) set.rating = null;
   }
   let unrated = freshState();
+  unrated.path = 'superhuman';
   unrated.ramp = early;
   unrated.difficulty = { ...unrated.difficulty, ratings: blank };
   unrated = applyWeeklyTargets(unrated, '2026-09-28');
   assert.equal(unrated.difficulty.targets['push-ups'], undefined);
-  assert.equal(unrated.difficulty.streaks['push-ups'], 0);
+  assert.equal(unrated.difficulty.streaks['push-ups'], 1);
 
   let floor = freshState();
+  floor.path = 'superhuman';
   floor.ramp = early;
   const low = {};
   logDays(low, ['2026-09-22']);
@@ -552,10 +562,10 @@ test('a form mark scales that set and an easier mark wins', () => {
   assert.equal(state.difficulty.ratings['2026-09-22']['0-1'].easier, true);
   assert.equal(state.difficulty.ratings['2026-09-22']['0-1'].rating, 'modify');
   state = applyCell(state, 1, 1, pushUps, rx, '2026-09-22');
-  assert.equal(state.stats.tier.strength, 6);
+  assert.equal(state.stats.tier.strength, 21);
   assert.equal(state.stats.lifetime.strength, 21);
   state = rateCell(state, 1, 1, 'slipped', '2026-09-22');
-  assert.equal(state.stats.tier.strength, 6);
+  assert.equal(state.stats.tier.strength, 21);
   assert.equal(state.stats.lifetime.strength, 21);
   const before = state.stats.tier.strength;
   state = rateCell(state, 0, 1, 'clean', '2026-09-21');
@@ -695,7 +705,7 @@ test('starter path stays locked until five clean-enough circuits, and history st
   ]);
   assert.equal(pathSelectionOpen(heavy), false);
   const thin = gateState(dates.map((date, index) => gateDay(date, index < 2 ? 'clean' : 'quiet')));
-  assert.equal(pathSelectionOpen(thin), false);
+  assert.equal(pathSelectionOpen(thin), true);
   const held = settlePaths({ ...freshState(), path: 'monk', pathsUnlocked: true, history: [] });
   assert.equal(held.path, 'monk');
   assert.equal(held.pathsUnlocked, true);

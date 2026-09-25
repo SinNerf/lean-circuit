@@ -1,4 +1,4 @@
-import { EXERCISES } from './catalog.js';
+import { workoutPath } from './paths.js';
 import {
   addDays,
   cellKey,
@@ -95,26 +95,48 @@ export function inWeek(iso, start) {
   return iso >= start && iso <= addDays(start, 6);
 }
 
-export function currentStreak(days, today) {
-  const set = new Set(days || []);
-  let cursor = set.has(today) ? today : addDays(today, -1);
-  if (!set.has(cursor)) return 0;
+function runBack(set, cursor, skips) {
   let count = 0;
   while (set.has(cursor)) {
     count += 1;
-    cursor = addDays(cursor, -1);
+    const previous = addDays(cursor, -1);
+    if (set.has(previous)) {
+      cursor = previous;
+      continue;
+    }
+    const bridge = addDays(cursor, -2);
+    if (skips < 1 && set.has(bridge)) {
+      skips += 1;
+      cursor = bridge;
+      continue;
+    }
+    break;
   }
   return count;
+}
+
+export function currentStreak(days, today) {
+  const set = new Set(days || []);
+  if (set.has(today)) return runBack(set, today, 0);
+  if (set.has(addDays(today, -1))) return runBack(set, addDays(today, -1), 0);
+  if (set.has(addDays(today, -2))) return runBack(set, addDays(today, -2), 1);
+  return 0;
 }
 
 export function longestStreak(days) {
   const sorted = [...new Set(days || [])].sort();
   let best = 0;
-  let run = 0;
-  let prev = null;
-  for (const day of sorted) {
-    run = prev && daysBetween(prev, day) === 1 ? run + 1 : 1;
-    prev = day;
+  for (let start = 0; start < sorted.length; start += 1) {
+    let skips = 0;
+    let run = 1;
+    for (let index = start + 1; index < sorted.length; index += 1) {
+      const gap = daysBetween(sorted[index - 1], sorted[index]);
+      if (gap <= 1) run += 1;
+      else if (gap === 2 && skips === 0) {
+        skips = 1;
+        run += 1;
+      } else break;
+    }
     if (run > best) best = run;
   }
   return best;
@@ -185,13 +207,31 @@ function weekVolume(state, start, exercise) {
   return total;
 }
 
-export function weeklySpec(weekly) {
-  return WEEKLY_POOL.find((item) => item.id === weekly?.objective) || null;
+export function weeklyPool(pathId) {
+  const path = workoutPath(pathId || 'starter');
+  const shared = WEEKLY_POOL.filter((item) => item.kind !== 'reps');
+  if (path.id === 'superhuman') return WEEKLY_POOL;
+  const goals = path.exercises
+    .filter((item) => item.unit !== 'sec')
+    .slice(0, 3)
+    .map((item) => ({
+      id: item.id,
+      name: `${item.credit * 4} ${item.name} reps`,
+      kind: 'reps',
+      exercise: item.id,
+      target: item.credit * 4,
+    }));
+  return [...goals, ...shared];
+}
+
+export function weeklySpec(weekly, pathId) {
+  const pool = weeklyPool(pathId);
+  return pool.find((item) => item.id === weekly?.objective) || WEEKLY_POOL.find((item) => item.id === weekly?.objective) || null;
 }
 
 export function weeklyProgress(state) {
   const weekly = state.weekly;
-  const spec = weeklySpec(weekly);
+  const spec = weeklySpec(weekly, state.path);
   if (!weekly || !spec) return null;
   const goal = spec.kind === 'reps' ? spec.target * STAT_POINT : spec.target;
   let current = 0;
@@ -213,8 +253,9 @@ export function weeklyProgress(state) {
 
 export function ensureWeekly(state, today, rng = Math.random) {
   const start = mondayOf(today);
-  if (state.weekly?.weekStart === start && state.weekly.objective) return state;
-  const objective = WEEKLY_POOL[Math.floor(rng() * WEEKLY_POOL.length) % WEEKLY_POOL.length].id;
+  const pool = weeklyPool(state.path);
+  if (state.weekly?.weekStart === start && pool.some((item) => item.id === state.weekly.objective)) return state;
+  const objective = pool[Math.floor(rng() * pool.length) % pool.length].id;
   return {
     ...state,
     weekly: {
@@ -346,7 +387,7 @@ export function afterAction(state, today, rng = Math.random) {
   let next = applyWeeklyTargets(ensureWeekly(rollDay(state, today), today, rng), today);
   next = applySessionLog(next, today);
   let badges = next.badges || {};
-  const exerciseIds = EXERCISES.map((exercise) => exercise.id);
+  const exerciseIds = workoutPath(next.path).exercises.map((exercise) => exercise.id);
   if (exerciseIds.every((id) => next.seenExercises?.[id])) badges = award(badges, 'first-workout', today);
   if (longestStreak(next.trainingDays) >= 7) badges = award(badges, 'streak-7', today);
   if (hasComeback(next.trainingDays)) badges = award(badges, 'comeback', today);

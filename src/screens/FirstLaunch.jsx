@@ -1,11 +1,22 @@
 import { useState } from 'react';
+import { StreakFlame } from '../components/Flame.jsx';
 import { proceed } from '../components/ui.jsx';
 import { useGame } from '../state.jsx';
 
+function DoorMark() {
+  return (
+    <div className="flex flex-col items-center text-center">
+      <StreakFlame streak={30} still className="h-32 w-28" />
+      <h1 className="mt-4 font-display text-[32px] font-semibold leading-none text-primary">Lean Circuit</h1>
+      <p className="mt-2 font-body text-[14px] font-normal text-muted">The day's circuit.</p>
+    </div>
+  );
+}
+
 export function BootScreen() {
   return (
-    <main className="grid min-h-dvh place-items-center bg-base px-4 pb-[var(--inset-bottom)] pt-[var(--inset-top)]">
-      <p className="font-body text-[14px] font-normal text-muted">Lean Circuit</p>
+    <main className="grid min-h-dvh place-items-center px-4 pb-[var(--inset-bottom)] pt-[var(--inset-top)]">
+      <DoorMark />
     </main>
   );
 }
@@ -25,7 +36,7 @@ export function AccountGate() {
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-base px-4 pb-[var(--inset-bottom)] pt-[var(--inset-top)] text-primary">
+    <main className="grid min-h-dvh place-items-center px-4 pb-[var(--inset-bottom)] pt-[var(--inset-top)] text-primary">
       <form
         className="flex w-full max-w-sm flex-col items-center"
         onSubmit={(event) => {
@@ -33,8 +44,7 @@ export function AccountGate() {
           run(game.enterAccount);
         }}
       >
-        <h1 className="text-center font-display text-[22px] font-semibold leading-none">Account</h1>
-        <p className="mt-2 text-center font-body text-[14px] font-normal text-muted">Sign in to open the circuit.</p>
+        <DoorMark />
         {!game.cloudOn ? <p className="mt-2 font-body text-[14px] font-normal text-primary">Sign-in is not available in this build.</p> : null}
         <label className="mt-4 w-full text-center font-body text-[13px] font-medium text-muted" htmlFor="account-email">
           Email

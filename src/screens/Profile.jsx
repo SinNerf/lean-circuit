@@ -12,6 +12,12 @@ import { Challenge } from './Challenge.jsx';
 import { PhotoAdjust } from './PhotoAdjust.jsx';
 import { useGame } from '../state.jsx';
 
+function titleTone(name) {
+  if (name === 'Twin-Blade' || name === 'Ascendant') return 'text-gold';
+  if (name === 'Iron Novice' || name === 'The Unbroken') return 'text-bronze';
+  return 'text-primary';
+}
+
 function emblemId(id) {
   return CORE_BADGES.some((item) => item.id === id) ? id : 'weekly';
 }
@@ -142,7 +148,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
           {name}
           {mark ? <span data-testid="ascend-mark"> {mark}</span> : null}
         </p>
-        <p data-testid="title-label" className="mt-2 font-display text-[22px] font-semibold leading-none text-primary">
+        <p data-testid="title-label" className={`mt-2 font-display text-[22px] font-semibold leading-none ${titleTone(title)}`}>
           {title}
         </p>
         <p data-testid="player-level" className="mt-2 font-display text-[28px] font-semibold leading-none text-primary">
@@ -165,11 +171,8 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
         <p data-testid="workouts-logged" className="mt-2 font-body text-[14px] font-normal text-primary">
           {workouts} workouts logged
         </p>
-        <div className="mt-2 flex items-center gap-2">
-          <p data-testid="streak-current" className="font-display text-[64px] font-semibold leading-none text-primary">
-            {streak}
-          </p>
-          <StreakFlame streak={streak} pulse={flamePulse} className="h-8 w-8" />
+        <div className="mt-2">
+          <StreakFlame streak={streak} pulse={flamePulse} count testId="streak-current" />
         </div>
         <p className="mt-2 font-body text-[13px] font-medium text-muted">Current streak</p>
         <p data-testid="streak-longest" className="mt-4 font-body text-[14px] font-normal text-primary">

@@ -94,9 +94,9 @@ export function Nav() {
                 game.closeSettings();
                 game.setTab(id);
               }}
-              className={`px-1 text-center font-body text-[12px] font-normal leading-tight ${on ? 'text-primary' : 'text-muted'}`}
+              className="px-1 text-center font-body text-[12px] font-normal leading-tight text-muted"
             >
-              {label}
+              <span className={on ? 'border-b-2 border-gold pb-0.5 text-gold' : ''}>{label}</span>
             </button>
           );
         })}

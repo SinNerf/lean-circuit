@@ -1,10 +1,14 @@
 import { Info } from 'lucide-react';
 import { workoutPath } from '../paths.js';
-import { elapsedOf, formatClock, openRound } from '../honors.js';
+import { currentStreak, elapsedOf, formatClock, openRound } from '../honors.js';
 import { GUIDE_ART } from '../guideArt.js';
 import { getGuide } from '../guides.js';
 import { cellKey, countChecks, doseLine, prescription, roundCount, targetNote } from '../logic.js';
+import { StreakFlame } from '../components/Flame.jsx';
 import { useGame } from '../state.jsx';
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const heroFace = 'mt-2 font-display text-[56px] font-semibold leading-none text-primary';
 
 const MARKS = [
   ['clean', 'Felt clean'],
@@ -67,7 +71,7 @@ function TimedRound() {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4" data-testid="timed-round">
         <p className="font-body text-[13px] font-medium leading-none text-muted">Round {focus.round + 1}</p>
-        <p data-testid="round-total" className="mt-4 font-body text-[40px] font-normal leading-none text-primary">
+        <p data-testid="round-total" className="mt-4 font-display text-[56px] font-semibold leading-none text-primary">
           {formatClock(focus.totalMs)}
         </p>
         {focus.phase === 'choice' ? (
@@ -100,11 +104,11 @@ function TimedRound() {
     <div className="flex h-full flex-col px-4 pb-4 pt-4" data-testid="timed-round">
       <p className="font-body text-[13px] font-medium leading-none text-muted">{label}</p>
       {counting ? (
-        <p data-testid="prep-count" className="mt-3 font-body text-[40px] font-normal leading-none text-primary">
+        <p data-testid="prep-count" className={heroFace}>
           {focus.seconds}
         </p>
       ) : (
-        <p data-testid="round-clock" className="mt-3 font-body text-[40px] font-normal leading-none text-primary">
+        <p data-testid="round-clock" className={heroFace}>
           {formatClock(elapsedOf(game.roundTimer, game.clock))}
         </p>
       )}
@@ -185,7 +189,7 @@ function RoundRows({ roundIndex }) {
     const mark = game.state.difficulty?.ratings?.[game.today]?.[key];
     const note = targetNote(game.state.difficulty, exercise.id, game.today);
     return (
-      <div key={`${roundIndex}-${exercise.id}`} className="mb-2 border-b border-line py-2">
+      <div key={`${roundIndex}-${exercise.id}`} className="mb-2 py-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -242,6 +246,15 @@ function RoundRows({ roundIndex }) {
   });
 }
 
+function Greeting() {
+  const game = useGame();
+  const streak = currentStreak(game.state.trainingDays, game.today);
+  if (streak >= 1) return <StreakFlame streak={streak} className="h-4 w-4" />;
+  const [year, month, day] = game.today.split('-').map(Number);
+  const name = WEEKDAYS[new Date(year, month - 1, day).getDay()];
+  return <p data-testid="circuit-greeting" className="font-body text-[13px] font-normal leading-none text-muted">{name}</p>;
+}
+
 export function Circuit() {
   const game = useGame();
   if (game.focus) return <TimedRound />;
@@ -253,30 +266,50 @@ export function Circuit() {
   const shown = game.restRound != null ? game.restRound : live;
   const roundNumber = shown == null ? 4 : shown + 1;
   const resting = game.rest != null;
+  const clock = game.roundTimer ? formatClock(elapsedOf(game.roundTimer, game.clock)) : null;
+  const countLine = `${done}/32`;
 
   return (
     <div className="pb-8">
-      <section className="px-4 pt-4">
+      <div className="px-4 pt-4">
+        <Greeting />
+      </div>
+      <section className="mx-4 mt-2 rounded bg-surface p-4">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">Today</h2>
         <p data-testid="circuit-path" className="mt-2 font-body text-[12px] font-normal leading-none text-muted">
           {path.name}
         </p>
-        <p data-testid="round-label" className="mt-2 font-body text-[22px] font-normal leading-none text-primary">
+        <p data-testid="round-label" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
           Round {roundNumber} of 4
         </p>
         <p className="mt-2 font-body text-[14px] font-normal leading-snug text-muted">
           Check a set after you finish it. Time the round if you want it to count for speed.
         </p>
-        <p className="mt-2 font-body text-[22px] font-normal leading-none text-primary" data-testid="done-count">
-          {done}/32
-        </p>
+        {resting ? (
+          <p data-testid="rest" className={heroFace}>
+            {game.rest}
+          </p>
+        ) : clock ? (
+          <p data-testid="round-clock" className={heroFace}>
+            {clock}
+          </p>
+        ) : (
+          <p data-testid="done-count" className={heroFace}>
+            {countLine}
+          </p>
+        )}
+        {resting || clock ? (
+          <p className="mt-2 font-body text-[14px] font-normal leading-none text-muted" data-testid="done-count">
+            {countLine}
+          </p>
+        ) : null}
         {paused ? (
-          <p data-testid="paused-line" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
+          <p data-testid="paused-line" className="mt-2 font-body text-[14px] font-normal leading-none text-muted">
             Paused, tap to resume
           </p>
         ) : null}
-        <div className="mt-2 h-1.5 overflow-hidden rounded-bar bg-surface">
-          <div className="h-full bg-accent" style={{ width: `${(done / 32) * 100}%` }} />
+        <div className="mt-2 h-1.5 overflow-hidden rounded-bar bg-raised">
+          <div className="h-full bg-gold" style={{ width: `${(done / 32) * 100}%` }} />
         </div>
         {paused ? (
           <p data-testid="pause-confirm" className="mt-2 font-body text-[14px] font-normal leading-none text-muted">
@@ -284,11 +317,6 @@ export function Circuit() {
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          {game.roundTimer ? (
-            <p data-testid="round-clock" className="font-body text-[28px] font-normal leading-none text-primary">
-              {formatClock(elapsedOf(game.roundTimer, game.clock))}
-            </p>
-          ) : null}
           {paused ? (
             <button
               type="button"
@@ -301,15 +329,9 @@ export function Circuit() {
           ) : (
             <>
               {resting ? (
-                <>
-                  <p className="font-body text-[14px] font-normal text-muted">Rest</p>
-                  <p data-testid="rest" className="font-body text-[28px] font-normal leading-none text-primary">
-                    {game.rest}
-                  </p>
-                  <button type="button" data-testid="rest-skip" onClick={game.skipRest} className="font-body text-[14px] font-normal text-primary">
-                    Skip
-                  </button>
-                </>
+                <button type="button" data-testid="rest-skip" onClick={game.skipRest} className="font-body text-[14px] font-normal text-muted">
+                  Skip
+                </button>
               ) : shown == null || game.roundTimer ? null : (
                 <button
                   type="button"
@@ -320,7 +342,7 @@ export function Circuit() {
                   Time this round
                 </button>
               )}
-              <button type="button" data-testid="reset-rounds" onClick={game.resetRounds} className="font-body text-[14px] font-normal text-primary">
+              <button type="button" data-testid="reset-rounds" onClick={game.resetRounds} className="font-body text-[14px] font-normal text-muted">
                 Reset
               </button>
               {done < 32 ? (
@@ -328,7 +350,7 @@ export function Circuit() {
                   type="button"
                   data-testid="stop-today"
                   onClick={game.stopToday}
-                  className="font-body text-[14px] font-normal text-primary"
+                  className="font-body text-[14px] font-normal text-muted"
                 >
                   Stop here for today
                 </button>
@@ -336,7 +358,7 @@ export function Circuit() {
             </>
           )}
         </div>
-        {paused ? <div data-testid="paused-board" className="mt-4 rounded bg-surface px-4 py-8" /> : null}
+        {paused ? <div data-testid="paused-board" className="mt-4 rounded bg-raised px-4 py-8" /> : null}
         {game.recovery ? (
           <p data-testid="recovery" className="mt-2 font-body text-[12px] font-normal text-muted">
             Three full circuits in a row. Muscles need the recovery.
@@ -355,7 +377,7 @@ export function Circuit() {
               {card.current} / {card.target}
             </p>
             <div className="mt-2 h-1.5 overflow-hidden rounded-bar bg-raised">
-              <div className="h-full bg-muted" style={{ width: `${(card.current / card.target) * 100}%` }} />
+              <div className="h-full bg-gold" style={{ width: `${(card.current / card.target) * 100}%` }} />
             </div>
           </div>
         </section>
@@ -370,19 +392,23 @@ export function Circuit() {
             const earlier = shown == null || roundIndex < shown;
             if (earlier && finished) {
               return (
-                <p key={roundIndex} data-testid={`round-done-${roundIndex}`} className="mb-2 border-b border-line py-2 font-body text-[14px] font-normal text-done">
+                <p key={roundIndex} data-testid={`round-done-${roundIndex}`} className="mb-2 py-2 font-body text-[14px] font-normal text-done">
                   Round {roundIndex + 1} — complete, 8/8
                 </p>
               );
             }
             return null;
           })}
-          {shown == null ? null : <RoundRows roundIndex={shown} />}
+          {shown == null ? null : (
+            <div className="mt-2 rounded bg-surface p-4">
+              <RoundRows roundIndex={shown} />
+            </div>
+          )}
         </div>
       </section>
       )}
 
-      <section className="px-4 pt-8">
+      <section className="mx-4 mt-8 rounded bg-surface p-4">
         <h2 className="font-body text-[13px] font-medium leading-none text-muted">What this works</h2>
         <div className="mt-2 font-body text-[14px] font-normal text-muted">
           {path.muscles.map((row) => (

@@ -10,6 +10,7 @@ import { Leaderboard, Profile } from './screens/Profile.jsx';
 import { Settings } from './screens/Settings.jsx';
 import { Admin } from './screens/Admin.jsx';
 import { FormSheet } from './screens/FormSheet.jsx';
+import { TrackPlayer } from './player.jsx';
 
 function Shell() {
   const game = useGame();
@@ -45,7 +46,8 @@ function Shell() {
   else if (game.tab === 'profile') body = <Profile />;
 
   return (
-    <div className="h-dvh overflow-hidden bg-base text-primary">
+    <div className="app-ground h-dvh overflow-hidden text-primary">
+      <TrackPlayer />
       <Header />
       <main className="absolute inset-x-0 bottom-[calc(64px+var(--inset-bottom))] top-[calc(56px+var(--inset-top))] overflow-y-auto">{body}</main>
       {game.celebration ? (

@@ -44,6 +44,7 @@ export function Admin() {
     setBusy(true);
     try {
       await setReportStatus(report.id, status);
+      if (status === 'revert') game.applyReport(report);
       setReports((rows) => rows.filter((row) => row.id !== report.id));
       setReport(null);
       setView('reports');
