@@ -32,6 +32,10 @@ import {
   levelInfo,
   nameKey,
   decideNameClaim,
+  sessionFlags,
+  progressDelta,
+  applyRevert,
+  emptyStats,
   parseProgress,
   pathSelectionOpen,
   prescription,
@@ -830,4 +834,88 @@ test('a username is one claim, kept for its account, or held by the same device'
   assert.equal(decideNameClaim({ uid: null, device }, { uid: 'u1', device, name: 'Alex' }), 'upgrade');
   assert.equal(decideNameClaim({ uid: null, device }, { uid: 'u1', device: other, name: 'Alex' }), 'taken');
   assert.equal(decideNameClaim({ uid: 'u1', device }, { uid: null, device, name: 'Alex' }), 'taken');
+});
+
+function flagState(overrides) {
+  return {
+    checks: { date: '2026-09-24', cells: {}, skipped: {}, expired: {}, paused: false },
+    roundTimes: [],
+    trainingDays: [],
+    volumeByDay: {},
+    speed: { baseline: null, best: null },
+    stats: emptyStats(),
+    badges: {},
+    weeklyBadges: [],
+    seenExercises: {},
+    history: [],
+    completedDays: [],
+    highestLevel: 0,
+    ...overrides,
+  };
+}
+
+function roundCells(round, start, step) {
+  const cells = {};
+  for (let index = 0; index < 8; index += 1) cells[`${round}-${index}`] = { credit: 1, checkedAt: start + index * step, parts: { strength: 1 } };
+  return cells;
+}
+
+test('fast checks and huge one-day jumps are flagged, slow work is not', () => {
+  const slow = flagState({ roundTimes: [{ date: '2026-09-24', ms: 5 * 60 * 1000 }], speed: { baseline: 5 * 60 * 1000, best: 5 * 60 * 1000 } });
+  assert.deepEqual(sessionFlags(slow, '2026-09-24'), []);
+  const fastRound = flagState({ roundTimes: [{ date: '2026-09-24', ms: 12 * 1000 }], speed: { baseline: 12 * 1000, best: 12 * 1000 } });
+  assert.ok(sessionFlags(fastRound, '2026-09-24').some((line) => line.includes('90 seconds')));
+  const tapped = flagState({ checks: { date: '2026-09-24', cells: roundCells(0, 1_000, 1_000), skipped: {}, expired: {}, paused: false } });
+  assert.ok(sessionFlags(tapped, '2026-09-24').some((line) => line.includes('Round 1')));
+  const paced = flagState({ checks: { date: '2026-09-24', cells: roundCells(0, 1_000, 20_000), skipped: {}, expired: {}, paused: false } });
+  assert.deepEqual(sessionFlags(paced, '2026-09-24'), []);
+  const cells = { ...roundCells(0, 0, 1_000), ...roundCells(1, 10_000, 1_000), ...roundCells(2, 20_000, 1_000), ...roundCells(3, 30_000, 1_000) };
+  const whole = flagState({ checks: { date: '2026-09-24', cells, skipped: {}, expired: {}, paused: false } });
+  assert.ok(sessionFlags(whole, '2026-09-24').some((line) => line.includes('32 sets')));
+  const first = flagState({ trainingDays: ['2026-09-24'], volumeByDay: { '2026-09-24': { 'push-ups': 8 } } });
+  assert.deepEqual(sessionFlags(first, '2026-09-24'), []);
+  const jump = flagState({
+    trainingDays: ['2026-09-23', '2026-09-24'],
+    volumeByDay: { '2026-09-23': { 'push-ups': 1 }, '2026-09-24': { 'push-ups': 5 } },
+  });
+  assert.ok(sessionFlags(jump, '2026-09-24').some((line) => line.includes('4 times')));
+  const modest = flagState({
+    trainingDays: ['2026-09-23', '2026-09-24'],
+    volumeByDay: { '2026-09-23': { 'push-ups': 2 }, '2026-09-24': { 'push-ups': 4 } },
+  });
+  assert.deepEqual(sessionFlags(modest, '2026-09-24'), []);
+  const burst = flagState({
+    roundTimes: [{ date: '2026-09-20', ms: 10 * 60 * 1000 }, { date: '2026-09-24', ms: 2 * 60 * 1000 }],
+    speed: { baseline: 10 * 60 * 1000, best: 2 * 60 * 1000 },
+  });
+  assert.ok(sessionFlags(burst, '2026-09-24').some((line) => line.includes('baseline')));
+  const before = flagState({ stats: emptyStats(), trainingDays: ['2026-09-23'], volumeByDay: { '2026-09-23': { 'push-ups': 1 } } });
+  const after = flagState({
+    stats: { ...emptyStats(), lifetime: { ...emptyStats().lifetime, strength: 2 }, tier: { ...emptyStats().tier, strength: 2 }, exerciseLifetime: { burpees: 2 } },
+    trainingDays: ['2026-09-23', '2026-09-24'],
+    volumeByDay: { '2026-09-23': { 'push-ups': 1 }, '2026-09-24': { burpees: 2 } },
+    roundTimes: [{ date: '2026-09-24', ms: 12 * 1000 }],
+    badges: { 'first-workout': '2026-09-24' },
+    seenExercises: { burpees: true },
+    history: [{ id: '2026-09-24', date: '2026-09-24', rounds: 1 }],
+    checks: { date: '2026-09-24', cells: { '0-0': { credit: 1 } }, skipped: {}, expired: {}, paused: false },
+  });
+  const delta = progressDelta(before, after, '2026-09-24');
+  const later = {
+    ...after,
+    stats: { ...after.stats, lifetime: { ...after.stats.lifetime, strength: 5 }, tier: { ...after.stats.tier, strength: 4 } },
+    trainingDays: ['2026-09-23', '2026-09-24', '2026-09-25'],
+    volumeByDay: { ...after.volumeByDay, '2026-09-25': { squats: 3 } },
+    history: [...after.history, { id: '2026-09-25', date: '2026-09-25', rounds: 1 }],
+  };
+  const reverted = applyRevert(later, { date: '2026-09-24', delta });
+  assert.equal(reverted.stats.lifetime.strength, 3);
+  assert.equal(reverted.stats.tier.strength, 2);
+  assert.equal(reverted.stats.exerciseLifetime.burpees, undefined);
+  assert.deepEqual(reverted.trainingDays, ['2026-09-23', '2026-09-25']);
+  assert.equal(reverted.volumeByDay['2026-09-24'], undefined);
+  assert.equal(reverted.volumeByDay['2026-09-25'].squats, 3);
+  assert.equal(reverted.history.length, 1);
+  assert.equal(reverted.badges['first-workout'], undefined);
+  assert.equal(reverted.roundTimes.length, 0);
 });

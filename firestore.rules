@@ -51,6 +51,42 @@ service cloud.firestore {
       );
       allow delete: if false;
     }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'nukelauncher7@gmail.com';
+    }
+    match /reports/{reportId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.applied == false
+        && reportId == request.auth.uid + '_' + request.resource.data.date;
+      allow update: if (isAdmin()
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.date == resource.data.date
+          && request.resource.data.status in ['open', 'pass', 'revert'])
+        || (signedIn()
+          && resource.data.uid == request.auth.uid
+          && resource.data.status == 'open'
+          && request.resource.data.status == 'open'
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.undo == resource.data.undo)
+        || (signedIn()
+          && resource.data.uid == request.auth.uid
+          && resource.data.status == 'revert'
+          && resource.data.applied == true
+          && request.resource.data.status == 'open'
+          && request.resource.data.applied == false
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.date == resource.data.date)
+        || (signedIn()
+          && resource.data.uid == request.auth.uid
+          && resource.data.status == 'revert'
+          && request.resource.data.status == 'revert'
+          && request.resource.data.applied == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applied']));
+      allow delete: if false;
+    }
     match /challenges/{challengeId} {
       function party() {
         return signedIn() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);

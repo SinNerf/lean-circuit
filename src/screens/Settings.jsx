@@ -11,7 +11,7 @@ export function Settings() {
   return (
     <div data-testid="settings" className="px-4 pb-8 pt-4">
       <section>
-        <h2 className="font-body text-[13px] font-medium leading-none text-muted">Week ramp</h2>
+        <h2 className="font-body text-[13px] font-medium leading-none text-muted">How hard this week is</h2>
         <p data-testid="week-label" className="mt-2 font-body text-[14px] font-normal leading-none text-primary">
           Week {game.week.week}
         </p>

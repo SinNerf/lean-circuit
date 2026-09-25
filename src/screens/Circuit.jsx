@@ -264,6 +264,9 @@ export function Circuit() {
         <p data-testid="round-label" className="mt-2 font-body text-[22px] font-normal leading-none text-primary">
           Round {roundNumber} of 4
         </p>
+        <p className="mt-2 font-body text-[14px] font-normal leading-snug text-muted">
+          Check a set after you finish it. Time the round if you want it to count for speed.
+        </p>
         <p className="mt-2 font-body text-[22px] font-normal leading-none text-primary" data-testid="done-count">
           {done}/32
         </p>
@@ -299,6 +302,7 @@ export function Circuit() {
             <>
               {resting ? (
                 <>
+                  <p className="font-body text-[14px] font-normal text-muted">Rest</p>
                   <p data-testid="rest" className="font-body text-[28px] font-normal leading-none text-primary">
                     {game.rest}
                   </p>

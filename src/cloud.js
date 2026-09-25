@@ -218,6 +218,70 @@ export async function clearOwnHistory(uid) {
   }
 }
 
+export async function fileReport(report) {
+  const on = await cloudEnabled();
+  if (!on || !db || !report?.uid || !report?.date) return;
+  const { doc, getDoc, setDoc } = await import('firebase/firestore');
+  const ref = doc(db, 'reports', `${report.uid}_${report.date}`);
+  const snap = await getDoc(ref);
+  const prev = snap.exists() ? snap.data() : null;
+  if (prev?.status === 'pass' || (prev?.status === 'revert' && !prev.applied)) return;
+  const fresh = !prev || prev.status === 'revert';
+  await setDoc(ref, {
+    uid: report.uid,
+    name: report.name || '',
+    date: report.date,
+    durationMs: report.durationMs || 0,
+    rounds: report.rounds || 0,
+    credit: report.credit || 0,
+    reasons: report.reasons || [],
+    delta: report.delta || {},
+    undo: fresh ? report.undo || null : prev.undo || report.undo || null,
+    status: 'open',
+    applied: false,
+    createdAt: fresh ? Date.now() : prev.createdAt || Date.now(),
+  });
+}
+
+export async function listOpenReports() {
+  const on = await cloudEnabled();
+  if (!on || !db) return [];
+  const { collection, getDocs, query, where } = await import('firebase/firestore');
+  const snap = await getDocs(query(collection(db, 'reports'), where('status', '==', 'open')));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+export async function setReportStatus(id, status) {
+  const on = await cloudEnabled();
+  if (!on || !db || !id || (status !== 'pass' && status !== 'revert')) return;
+  const { doc, setDoc } = await import('firebase/firestore');
+  await setDoc(doc(db, 'reports', id), { status, applied: false }, { merge: true });
+}
+
+export async function loadOwnReverts(uid) {
+  const on = await cloudEnabled();
+  if (!on || !db || !uid) return [];
+  const { collection, getDocs, query, where } = await import('firebase/firestore');
+  const snap = await getDocs(query(collection(db, 'reports'), where('uid', '==', uid)));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() })).filter((row) => row.status === 'revert' && !row.applied);
+}
+
+export async function loadOwnReport(uid, date) {
+  const on = await cloudEnabled();
+  if (!on || !db || !uid || !date) return null;
+  const { doc, getDoc } = await import('firebase/firestore');
+  const snap = await getDoc(doc(db, 'reports', `${uid}_${date}`));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function markReportApplied(id) {
+  const on = await cloudEnabled();
+  if (!on || !db || !id) return;
+  const { doc, setDoc } = await import('firebase/firestore');
+  await setDoc(doc(db, 'reports', id), { applied: true }, { merge: true });
+}
+
 export async function pullProfile(uid) {
   const on = await cloudEnabled();
   if (!on || !db || !uid) return null;

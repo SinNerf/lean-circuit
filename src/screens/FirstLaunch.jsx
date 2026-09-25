@@ -102,7 +102,7 @@ export function UsernameGate() {
         }}
       >
         <h1 className="font-display text-[22px] font-semibold leading-none">Username</h1>
-        <p className="mt-2 font-body text-[14px] font-normal text-muted">Asked once.</p>
+        <p className="mt-2 font-body text-[14px] font-normal text-muted">This is the name other people see.</p>
         <input
           id="display-name"
           data-testid="name-input"

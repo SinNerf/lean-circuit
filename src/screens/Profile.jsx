@@ -178,6 +178,7 @@ function Sheet({ photo, tone, name, title, level, mark, path, workouts, streak, 
       </section>
       <section className="px-4 pt-8 text-left">
         <h2 className={label}>Badges</h2>
+        <p className="mt-2 font-body text-[14px] font-normal text-muted">Earned medals are the gold ones.</p>
         {featured ? (
           <div data-testid="featured-badge" className="mt-4 text-gold">
             <BadgeEmblem id={emblemId(featured.id)} earned pulse={badgePulse === featured.id || badgePulse === emblemId(featured.id)} className="h-24 w-24" />

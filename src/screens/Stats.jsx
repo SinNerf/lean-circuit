@@ -76,6 +76,9 @@ export function Stats() {
               <p data-testid={row.metaId} className="font-body text-[12px] font-normal leading-none text-muted">
                 {row.meta}
               </p>
+              <p className="font-body text-[12px] font-normal leading-snug text-muted">
+                {row.id === 'speed' ? `Tier ${row.tier}. That line is the best round.` : `Tier ${row.tier}. That line is lifetime credit.`}
+              </p>
             </div>
           ))}
         </div>

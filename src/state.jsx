@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { TRIALS, CLASS_TRIALS } from './catalog.js';
 import { exercisesFor, workoutPath } from './paths.js';
 import { draftMatch, flameCrossed, sameScore, scoredMatch, shouldResolve } from './challenge.js';
-import { addFriend, banChallenge, claimUsername, clearOwnHistory, cloudEnabled, createChallenge, ensureCode, finishChallenge, loadBoard, loadFriend, pullBody, pullProfile, pushChallengeScore, pushCloud, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount, watchChallenges } from './cloud.js';
+import { addFriend, banChallenge, claimUsername, clearOwnHistory, cloudEnabled, createChallenge, ensureCode, fileReport, finishChallenge, listOpenReports, loadBoard, loadFriend, loadOwnReport, loadOwnReverts, markReportApplied, pullBody, pullProfile, pushChallengeScore, pushCloud, setReportStatus, signIn, signInWithGoogleAccount, signOutAccount, signUp, watchAccount, watchChallenges } from './cloud.js';
 import { isAdmin } from './admin.js';
 import { isProfilePhoto } from './photo.js';
 import { beep, buzz } from './audio.js';
@@ -27,6 +27,7 @@ import {
   STAT_IDS,
   adoptMove,
   applyCell,
+  applyRevert,
   cellKey,
   difficultyStart,
   dismissMove,
@@ -38,6 +39,7 @@ import {
   normalizeChecks,
   parseProgress,
   prescription,
+  progressDelta,
   rateCell,
   creditFor,
   pathChangeEntry,
@@ -55,9 +57,12 @@ import {
   revertMove,
   roundCount,
   serialize,
+  sessionBrief,
+  sessionFlags,
   skipWeek,
   speedTier,
   todayKey,
+  undoSnapshot,
   visualTier,
   weekState,
 } from './logic.js';
@@ -119,6 +124,7 @@ function loadState() {
     photoData: get(KEYS.photo, null),
     photoURL: get(KEYS.photoURL, '') || '',
     history: readHistory(get(KEYS.history, [])),
+    appliedReports: Array.isArray(get(KEYS.appliedReports, [])) ? get(KEYS.appliedReports, []) : [],
     featuredBadge: get(KEYS.featured, '') || '',
     accountUid: get(KEYS.account, null) || null,
   })));
@@ -157,6 +163,7 @@ function persist(state) {
   else remove(KEYS.photo);
   set(KEYS.photoURL, state.photoURL || '');
   set(KEYS.history, state.history || []);
+  set(KEYS.appliedReports, state.appliedReports || []);
   set(KEYS.featured, state.featuredBadge || '');
   if (state.accountUid) set(KEYS.account, state.accountUid);
   else remove(KEYS.account);
@@ -200,6 +207,7 @@ export function GameProvider({ children }) {
   const [authReady, setAuthReady] = useState(false);
   const [resolvedUid, setResolvedUid] = useState(null);
   const [cloudOn, setCloudOn] = useState(false);
+  const [reportsReady, setReportsReady] = useState(false);
   const [authError, setAuthError] = useState('');
   const boot = useRef(false);
   const prev = useRef(null);
@@ -212,6 +220,7 @@ export function GameProvider({ children }) {
   const restRef = useRef(null);
   const focusRef = useRef(null);
   const nameKept = useRef(false);
+  const flagBase = useRef(null);
   focusRef.current = focus;
   stateRef.current = state;
 
@@ -225,7 +234,10 @@ export function GameProvider({ children }) {
     stop = watchAccount((user) => {
       setAccount(user);
       setAuthReady(true);
-      if (!user) setResolvedUid(null);
+      if (!user) {
+        setResolvedUid(null);
+        setReportsReady(true);
+      } else setReportsReady(false);
     });
     return () => stop();
   }, []);
@@ -278,12 +290,37 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     if (!account?.uid || resolvedUid !== account.uid) return undefined;
+    let dead = false;
+    loadOwnReverts(account.uid)
+      .then((rows) => {
+        if (dead) return;
+        const pending = rows.filter((row) => !(stateRef.current.appliedReports || []).includes(row.id));
+        if (pending.length) {
+          setState((s) => {
+            const next = pending.reduce((acc, row) => applyRevert(acc, row), s);
+            const ids = pending.map((row) => row.id);
+            return { ...next, appliedReports: [...(s.appliedReports || []), ...ids] };
+          });
+        }
+        for (const row of rows) markReportApplied(row.id).catch(() => {});
+        setReportsReady(true);
+      })
+      .catch(() => {
+        if (!dead) setReportsReady(true);
+      });
+    return () => {
+      dead = true;
+    };
+  }, [account, resolvedUid]);
+
+  useEffect(() => {
+    if (!account?.uid || resolvedUid !== account.uid || !reportsReady) return undefined;
     const uid = account.uid;
     const handle = window.setTimeout(() => {
       pushCloud(uid, stateRef.current, levelInfo(stateRef.current.stats.tier, speedTier(stateRef.current.speed)), today).catch(() => {});
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [account, resolvedUid, state, today]);
+  }, [account, resolvedUid, reportsReady, state, today]);
 
   useEffect(() => {
     if (!account?.uid) return undefined;
@@ -523,6 +560,32 @@ export function GameProvider({ children }) {
     setRoundTimer(timing);
   }
 
+  async function watchFlags(before, after) {
+    const reasons = sessionFlags(after, today);
+    const uid = account?.uid;
+    if (!reasons.length || !uid) return;
+    let origin = before;
+    if (flagBase.current?.date === today) origin = flagBase.current.before;
+    else {
+      const existing = await loadOwnReport(uid, today).catch(() => null);
+      if (existing?.status === 'pass' || (existing?.status === 'revert' && !existing.applied)) return;
+      if (existing?.status === 'open' && existing.undo) origin = existing.undo;
+      flagBase.current = { date: today, before: origin };
+    }
+    const brief = sessionBrief(after, today, reasons);
+    await fileReport({
+      uid,
+      name: after.name || '',
+      date: today,
+      durationMs: brief.durationMs,
+      rounds: brief.rounds,
+      credit: brief.credit,
+      reasons: brief.reasons,
+      delta: progressDelta(origin, after, today),
+      undo: undoSnapshot(origin),
+    }).catch(() => {});
+  }
+
   const api = {
     state,
     today,
@@ -619,7 +682,13 @@ export function GameProvider({ children }) {
     async resetOwnProgress() {
       if (!isAdmin(account?.email)) return;
       const current = stateRef.current;
-      const kept = { name: current.name, device: current.device, accountUid: current.accountUid };
+      const kept = {
+        name: current.name,
+        device: current.device,
+        accountUid: current.accountUid,
+        photoData: current.photoData,
+        photoURL: current.photoURL,
+      };
       timerRef.current = null;
       setRoundTimer(null);
       focusRef.current = null;
@@ -691,7 +760,9 @@ export function GameProvider({ children }) {
       setState((s) => {
         let next = applyCell(s, live.round, live.index, exercise, rx, today);
         if (step.record) next = recordRound(next, step.ms, today);
-        return afterAction(next, today);
+        next = afterAction(next, today);
+        queueMicrotask(() => watchFlags(s, next));
+        return next;
       });
       focusRef.current = step.focus;
       setFocus(step.focus);
@@ -789,7 +860,9 @@ export function GameProvider({ children }) {
           timerRef.current = null;
           setRoundTimer(null);
         }
-        return afterAction(next, today);
+        next = afterAction(next, today);
+        if (!was) queueMicrotask(() => watchFlags(s, next));
+        return next;
       });
       if (!was) {
         const seconds = index === 7 ? 90 : 20;

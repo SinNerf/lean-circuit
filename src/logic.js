@@ -32,6 +32,7 @@ export const KEYS = {
   photo: 'lean-circuit-photo',
   photoURL: 'lean-circuit-photo-url',
   history: 'lean-circuit-history',
+  appliedReports: 'lean-circuit-applied-reports',
   featured: 'lean-circuit-featured',
   account: 'lean-circuit-account',
   pathsOpen: 'lean-circuit-paths-open',
@@ -120,6 +121,7 @@ export function freshState() {
     photoData: null,
     photoURL: '',
     history: [],
+    appliedReports: [],
     featuredBadge: '',
     accountUid: null,
   };
@@ -325,6 +327,7 @@ function addCell(state, checks, key, exercise, rx, today) {
     target: rx.credit,
     tierGranted: !already,
     parts,
+    checkedAt: Date.now(),
   };
   let ramp = state.ramp;
   if (!ramp.firstDate) {
@@ -931,6 +934,184 @@ export function applySessionLog(state, today) {
   if (index >= 0) history[index] = next;
   else history.push(next);
   return { ...state, history };
+}
+
+const ROUND_FLOOR_MS = 90 * 1000;
+const DAY_FLOOR_MS = 6 * 60 * 1000;
+const SPEED_CAP_MS = 3 * 60 * 1000;
+
+function spanOf(times) {
+  if (!times.length) return 0;
+  return Math.max(...times) - Math.min(...times);
+}
+
+function creditOfDay(state, today) {
+  const bag = state.volumeByDay?.[today] || {};
+  return Object.values(bag).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+}
+
+export function sessionFlags(state, today) {
+  const reasons = [];
+  const checks = normalizeChecks(state.checks, today);
+  const rounds = (state.roundTimes || []).filter((row) => row.date === today);
+  if (rounds.some((row) => row.ms < ROUND_FLOOR_MS)) reasons.push('A timed round finished in under 90 seconds.');
+  for (let round = 0; round < 4; round += 1) {
+    const times = [];
+    let complete = true;
+    for (let index = 0; index < 8; index += 1) {
+      const cell = checks.cells[cellKey(round, index)];
+      if (!cell) {
+        complete = false;
+        break;
+      }
+      if (typeof cell.checkedAt === 'number') times.push(cell.checkedAt);
+    }
+    if (complete && times.length === 8 && spanOf(times) < ROUND_FLOOR_MS) {
+      reasons.push(`Round ${round + 1} was checked in under 90 seconds.`);
+    }
+  }
+  const stamps = Object.values(checks.cells || {}).map((cell) => cell.checkedAt).filter((value) => typeof value === 'number');
+  if (Object.keys(checks.cells || {}).length >= 32 && stamps.length >= 32 && spanOf(stamps) < DAY_FLOOR_MS) {
+    reasons.push('All 32 sets were checked in under 6 minutes.');
+  }
+  const earlier = (state.trainingDays || []).filter((day) => day !== today);
+  let best = 0;
+  for (const [day, bag] of Object.entries(state.volumeByDay || {})) {
+    if (day === today) continue;
+    const total = Object.values(bag).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+    if (total > best) best = total;
+  }
+  const todayCredit = creditOfDay(state, today);
+  if (earlier.length && best > 0 && todayCredit > best * 4) {
+    reasons.push('Today’s credit is more than 4 times their best earlier day.');
+  }
+  const baseline = state.speed?.baseline;
+  if (baseline && rounds.some((row) => row.ms !== baseline && row.ms < baseline / 4 && row.ms < SPEED_CAP_MS)) {
+    reasons.push('A round was more than 4 times faster than their baseline.');
+  }
+  return reasons;
+}
+
+function statMapDelta(after, before) {
+  const delta = {};
+  const keys = new Set([...Object.keys(after || {}), ...Object.keys(before || {})]);
+  for (const key of keys) {
+    const amount = (Number(after?.[key]) || 0) - (Number(before?.[key]) || 0);
+    if (amount) delta[key] = amount;
+  }
+  return delta;
+}
+
+export function progressDelta(before, after, date) {
+  const beforeTimes = before.roundTimes || [];
+  const afterTimes = after.roundTimes || [];
+  const roundTimes = afterTimes.slice(beforeTimes.length).filter((row) => row.date === date);
+  return {
+    lifetime: statMapDelta(after.stats?.lifetime, before.stats?.lifetime),
+    tier: statMapDelta(after.stats?.tier, before.stats?.tier),
+    exerciseLifetime: statMapDelta(after.stats?.exerciseLifetime, before.stats?.exerciseLifetime),
+    roundTimes,
+    badges: Object.keys(after.badges || {}).filter((id) => !before.badges?.[id]),
+    weeklyBadgeIds: (after.weeklyBadges || []).filter((badge) => !(before.weeklyBadges || []).some((item) => item.id === badge.id)).map((badge) => badge.id),
+    trainingDay: (after.trainingDays || []).includes(date) && !(before.trainingDays || []).includes(date),
+    seen: Object.keys(after.seenExercises || {}).filter((id) => !before.seenExercises?.[id]),
+  };
+}
+
+export function undoSnapshot(state) {
+  return {
+    stats: cloneStats(state.stats || emptyStats()),
+    speed: { baseline: state.speed?.baseline ?? null, best: state.speed?.best ?? null },
+    roundTimes: [...(state.roundTimes || [])],
+    trainingDays: [...(state.trainingDays || [])],
+    badges: { ...(state.badges || {}) },
+    weeklyBadges: [...(state.weeklyBadges || [])],
+    seenExercises: { ...(state.seenExercises || {}) },
+    highestLevel: state.highestLevel || 0,
+  };
+}
+
+export function sessionBrief(state, today, reasons) {
+  const checks = normalizeChecks(state.checks, today);
+  const stamps = Object.values(checks.cells || {}).map((cell) => cell.checkedAt).filter((value) => typeof value === 'number');
+  const roundsToday = (state.roundTimes || []).filter((row) => row.date === today);
+  const span = spanOf(stamps);
+  const shortest = roundsToday.reduce((min, row) => Math.min(min, row.ms), span || Infinity);
+  let rounds = 0;
+  for (let round = 0; round < 4; round += 1) {
+    if (roundCount(checks, round) === 8) rounds += 1;
+  }
+  return {
+    durationMs: Number.isFinite(shortest) ? Math.max(span, 0) || shortest : 0,
+    rounds,
+    credit: creditOfDay(state, today),
+    reasons,
+  };
+}
+
+function subtractMap(target, delta) {
+  const next = { ...(target || {}) };
+  for (const [key, amount] of Object.entries(delta || {})) {
+    const left = Math.max(0, (Number(next[key]) || 0) - (Number(amount) || 0));
+    if (left) next[key] = left;
+    else delete next[key];
+  }
+  return next;
+}
+
+export function applyRevert(state, report) {
+  const date = report?.date;
+  const delta = report?.delta;
+  if (!date || !delta) return state;
+  const stats = cloneStats(state.stats || emptyStats());
+  stats.lifetime = subtractMap(stats.lifetime, delta.lifetime);
+  stats.tier = subtractMap(stats.tier, delta.tier);
+  for (const id of STAT_IDS) {
+    stats.lifetime[id] = stats.lifetime[id] || 0;
+    stats.tier[id] = stats.tier[id] || 0;
+  }
+  stats.exerciseLifetime = subtractMap(stats.exerciseLifetime, delta.exerciseLifetime);
+  const daily = { ...stats.daily };
+  for (const [id, stamp] of Object.entries(daily)) {
+    if (stamp?.date === date) delete daily[id];
+  }
+  stats.daily = daily;
+  let roundTimes = [...(state.roundTimes || [])];
+  for (const row of delta.roundTimes || []) {
+    const index = roundTimes.findIndex((item) => item.date === date && item.ms === row.ms);
+    if (index >= 0) roundTimes.splice(index, 1);
+  }
+  const speed = roundTimes.length
+    ? { baseline: roundTimes[0].ms, best: Math.min(...roundTimes.map((row) => row.ms)) }
+    : { baseline: null, best: null };
+  const trainingDays = delta.trainingDay ? (state.trainingDays || []).filter((day) => day !== date) : (state.trainingDays || []);
+  const badges = { ...(state.badges || {}) };
+  for (const id of delta.badges || []) {
+    if (badges[id] === date) delete badges[id];
+  }
+  const weeklyBadges = (state.weeklyBadges || []).filter((badge) => !(delta.weeklyBadgeIds || []).includes(badge.id) || badge.date !== date);
+  const seenExercises = { ...(state.seenExercises || {}) };
+  for (const id of delta.seen || []) delete seenExercises[id];
+  const checks = state.checks?.date === date
+    ? { date, cells: {}, skipped: {}, expired: {}, paused: false }
+    : state.checks;
+  const volumeByDay = { ...(state.volumeByDay || {}) };
+  delete volumeByDay[date];
+  return {
+    ...state,
+    stats,
+    speed,
+    roundTimes,
+    trainingDays,
+    badges,
+    weeklyBadges,
+    seenExercises,
+    checks,
+    history: (state.history || []).filter((row) => row.date !== date && row.id !== date),
+    volumeByDay,
+    completedDays: (state.completedDays || []).filter((day) => day !== date),
+    highestLevel: levelInfo(stats.tier, speedTier(speed)).level,
+  };
 }
 
 export function pathChangeEntry(state, today, nextPath) {
